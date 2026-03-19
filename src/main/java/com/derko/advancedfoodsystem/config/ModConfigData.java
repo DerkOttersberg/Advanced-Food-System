@@ -8,6 +8,7 @@ public class ModConfigData {
     public static class SystemSettings {
         public int maxHearts = 6;
         public int maxHeartsWithFood = 10;
+        public boolean wholeHeartHealthScaling = true;
         public boolean enableBuffHud = true;
         public int maxActiveBuffs = 3;
         public double buffDurationMultiplier = 1.0D;

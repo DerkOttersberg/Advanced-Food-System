@@ -12,6 +12,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
@@ -19,8 +20,9 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
 import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 
 import java.util.List;
@@ -58,7 +60,6 @@ public final class CommonEvents {
         }
 
         ItemStack stack = event.getItem();
-
         FoodProperties properties = stack.getFoodProperties(player);
         if (properties == null || properties.nutrition() <= 0) {
             return;
@@ -72,33 +73,79 @@ public final class CommonEvents {
             return;
         }
 
+        applyConfiguredFoodBuff(player, key, entry);
+    }
+
+    @SubscribeEvent
+    public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+
+        ItemStack stack = event.getItemStack();
+        FoodProperties properties = stack.getFoodProperties(player);
+        if (properties == null || properties.nutrition() <= 0) {
+            return;
+        }
+
+        // Vanilla handles normal food usage when the player is not full.
+        if (player.canEat(false)) {
+            return;
+        }
+
+        ResourceLocation keyLoc = stack.getItem().builtInRegistryHolder().key().location();
+        String key = keyLoc.toString();
+        FoodBuffEntry entry = ConfigManager.foodBuffs().get(key);
+        if (entry == null || entry.buffs == null || entry.buffs.isEmpty()) {
+            return;
+        }
+
+        if (applyConfiguredFoodBuff(player, key, entry)) {
+            if (!player.getAbilities().instabuild) {
+                stack.shrink(1);
+                if (stack.isEmpty()) {
+                    player.setItemInHand(event.getHand(), ItemStack.EMPTY);
+                }
+            }
+
+            player.swing(event.getHand(), true);
+            event.setCanceled(true);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+        }
+    }
+
+    private static boolean applyConfiguredFoodBuff(ServerPlayer player, String sourceKey, FoodBuffEntry entry) {
         String secondaryBuffId = entry.buffs.getFirst();
 
-        // Apply global multipliers from the NeoForge mod settings config
         double durationMult = Math.max(0.1D, ConfigManager.modConfig().system.buffDurationMultiplier);
-        double magnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
+        double globalMagnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
+        double perEffectMult = ConfigManager.effectStrengthMultiplier(secondaryBuffId);
 
         int durationTicks = (int) (Math.max(15, entry.durationSeconds) * durationMult) * 20;
-        double magnitude = entry.magnitude * magnitudeMult;
+        double effectiveMagnitude = entry.magnitude * globalMagnitudeMult * perEffectMult;
 
         BuffInstance instance = new BuffInstance(
                 secondaryBuffId,
                 durationTicks,
                 durationTicks,
-                magnitude,
+                effectiveMagnitude,
                 entry.healthBonusHearts,
-                key,
+                sourceKey,
                 player.level().getGameTime()
         );
-        if (BuffStorage.add(player, instance) && ConfigManager.modConfig().notifications.showBuffApplied) {
-            String msg = "+" + stripTrailingZero(entry.healthBonusHearts) + " hearts, " + BuffNames.pretty(secondaryBuffId);
+
+        boolean added = BuffStorage.add(player, instance);
+        if (added && ConfigManager.modConfig().notifications.showBuffApplied) {
+            String msg = "+" + formatHeartLabel(entry.healthBonusHearts) + ", " + BuffNames.pretty(secondaryBuffId);
             player.displayClientMessage(Component.literal("\u00a76" + msg), true);
         }
 
         if (entry.buffs.contains("saturation_boost")) {
-            float add = (float) (2.0F * magnitude);
+            float add = (float) (2.0F * effectiveMagnitude);
             player.getFoodData().setSaturation(player.getFoodData().getSaturationLevel() + add);
         }
+
+        return added;
     }
 
     @SubscribeEvent
@@ -111,11 +158,15 @@ public final class CommonEvents {
         }
 
         String secondary = entry.buffs.getFirst();
-        String line = "+" + stripTrailingZero(entry.healthBonusHearts) + " hearts | "
-                + BuffNames.pretty(secondary)
-                + " x" + String.format("%.2f", entry.magnitude)
-                + " | " + entry.durationSeconds + "s";
-        event.getToolTip().add(Component.literal(line).withStyle(ChatFormatting.GOLD));
+        double globalMagnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
+        double perEffectMult = ConfigManager.effectStrengthMultiplier(secondary);
+        double effectiveMagnitude = entry.magnitude * globalMagnitudeMult * perEffectMult;
+
+        event.getToolTip().add(Component.literal("Bonus Health: +" + formatHeartLabel(entry.healthBonusHearts)).withStyle(ChatFormatting.GOLD));
+        event.getToolTip().add(Component.literal("Buff: " + BuffNames.pretty(secondary) + " x" + String.format("%.2f", effectiveMagnitude)).withStyle(ChatFormatting.YELLOW));
+        event.getToolTip().add(Component.literal("Strength Mod: global x" + String.format("%.2f", globalMagnitudeMult)
+                + " | effect x" + String.format("%.2f", perEffectMult)).withStyle(ChatFormatting.DARK_GRAY));
+        event.getToolTip().add(Component.literal("Duration: " + entry.durationSeconds + "s").withStyle(ChatFormatting.GRAY));
     }
 
     private static String stripTrailingZero(double value) {
@@ -123,6 +174,12 @@ public final class CommonEvents {
             return Integer.toString((int) Math.rint(value));
         }
         return String.format("%.1f", value);
+    }
+
+    private static String formatHeartLabel(double hearts) {
+        String number = stripTrailingZero(hearts);
+        boolean singular = Math.abs(hearts - 1.0D) < 0.0001D;
+        return number + (singular ? " heart" : " hearts");
     }
 
     /** Damage reduction is capped at 75% to prevent near-immortality. */
@@ -137,7 +194,7 @@ public final class CommonEvents {
 
         double reduction = totals.getOrDefault("damage_reduction", 0.0D);
         if (reduction > 0.0D) {
-            reduction = Math.min(0.75D, reduction);   // hard cap: never more than 75%
+            reduction = Math.min(0.75D, reduction);
             event.setNewDamage((float) (event.getNewDamage() * (1.0D - reduction)));
         }
     }

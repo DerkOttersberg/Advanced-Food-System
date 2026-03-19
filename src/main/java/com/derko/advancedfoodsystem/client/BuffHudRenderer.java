@@ -90,10 +90,35 @@ public final class BuffHudRenderer {
 
         int ox = ConfigManager.modConfig().hud.offsetX;
         int oy = ConfigManager.modConfig().hud.offsetY;
+        String position = ConfigManager.modConfig().hud.position;
 
-        // Anchor: top-left of the slot column (bottom-right config)
-        int x = screenW - SLOT_W - ox;
-        int y = screenH + oy;       // oy is negative to move up
+        int stackHeight = max > 0 ? (max * SLOT_H) + ((max - 1) * SLOT_GAP) : SLOT_H;
+
+        int x;
+        int y;
+
+        switch (position) {
+            case "bottom_left" -> {
+                x = ox;
+                y = screenH - stackHeight + oy;
+            }
+            case "top_left" -> {
+                x = ox;
+                y = oy;
+            }
+            case "top_right" -> {
+                x = screenW - SLOT_W - ox;
+                y = oy;
+            }
+            default -> {
+                x = screenW - SLOT_W - ox;
+                y = screenH - stackHeight + oy;
+            }
+        }
+
+        // Keep the full stack and heart summary on-screen, even with aggressive offsets.
+        x = clamp(x, 2, Math.max(2, screenW - SLOT_W - 2));
+        y = clamp(y, 16, Math.max(16, screenH - stackHeight - 2));
 
         // --- Heart summary row (above slots) ---
         drawHeartSummary(gfx, font, x, y - 14, all);
@@ -365,5 +390,9 @@ public final class BuffHudRenderer {
 
     private static boolean isCombo(BuffInstance buff) {
         return buff.source().startsWith("combo:");
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 }

@@ -12,11 +12,11 @@
       "projectName": "advanced-food-system",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\build\\moddev\\clientRunProgramArgs.txt"
+        "@C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\build\\moddev\\clientRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dadvancedfoodsystem%%C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\bin\\main"
+        "@C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\build\\moddev\\clientRunVmArgs.txt",
+        "-Dfml.modFolders\u003dadvancedfoodsystem%%C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},
@@ -34,11 +34,11 @@
       "projectName": "advanced-food-system",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\build\\moddev\\serverRunProgramArgs.txt"
+        "@C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\build\\moddev\\serverRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dadvancedfoodsystem%%C:\\Users\\derko\\Desktop\\test2\\Food System Seamless satiation\\bin\\main"
+        "@C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\build\\moddev\\serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003dadvancedfoodsystem%%C:\\Users\\derko\\OneDrive\\Bureaublad\\combined\\Advanced-Food-System\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\run",
       "env": {},

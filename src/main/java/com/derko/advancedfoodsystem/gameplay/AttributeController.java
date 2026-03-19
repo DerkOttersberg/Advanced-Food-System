@@ -15,7 +15,6 @@ public final class AttributeController {
     private static final ResourceLocation MOVE_SPEED_ID      = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "move_speed");
     private static final ResourceLocation ATTACK_SPEED_ID    = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "attack_speed");
     private static final ResourceLocation KNOCKBACK_RES_ID   = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "knockback_resistance");
-    private static final ResourceLocation JUMP_STRENGTH_ID   = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "jump_strength");
 
     private AttributeController() {
     }
@@ -35,10 +34,6 @@ public final class AttributeController {
         double attack = totals.getOrDefault("attack_speed", 0.0D);
         attack += totals.getOrDefault("warrior_boost", 0.0D) * 0.08D;
         applyMultiplyBase(player, Attributes.ATTACK_SPEED, ATTACK_SPEED_ID, attack);
-
-        // jump_height via JUMP_STRENGTH attribute — applies on both sides so client prediction is correct
-        applyMultiplyBase(player, Attributes.JUMP_STRENGTH, JUMP_STRENGTH_ID,
-                totals.getOrDefault("jump_height", 0.0D));
 
         double kb = totals.getOrDefault("knockback_resistance", 0.0D);
         applyAddValue(player, Attributes.KNOCKBACK_RESISTANCE, KNOCKBACK_RES_ID, Math.min(kb, 0.75D));

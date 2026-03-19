@@ -1,6 +1,7 @@
 package com.derko.advancedfoodsystem;
 
 import com.derko.seamlessapi.SatiationAPI;
+import com.derko.advancedfoodsystem.client.AfsConfigScreen;
 import com.derko.advancedfoodsystem.client.BuffHudRenderer;
 import com.derko.advancedfoodsystem.client.ClientBuffState;
 import com.derko.advancedfoodsystem.config.AfsClientConfig;
@@ -18,6 +19,7 @@ import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 
 @Mod(AdvancedFoodSystemMod.MOD_ID)
@@ -40,6 +42,8 @@ public class AdvancedFoodSystemMod {
         ConfigManager.loadOrCreate();
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
+            IConfigScreenFactory configScreenFactory = (container, modListScreen) -> new AfsConfigScreen(modListScreen);
+            modContainer.registerExtensionPoint(IConfigScreenFactory.class, configScreenFactory);
             NeoForge.EVENT_BUS.register(BuffHudRenderer.class);
             NeoForge.EVENT_BUS.register(ClientBuffState.class);
             NeoForge.EVENT_BUS.register(ClientEvents.class);

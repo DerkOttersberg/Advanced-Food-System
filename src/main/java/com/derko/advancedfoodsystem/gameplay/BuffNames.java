@@ -9,11 +9,11 @@ public final class BuffNames {
     static {
         NAMES.put("mining_speed", "Mining Speed");
         NAMES.put("walk_speed", "Walk Speed");
-        NAMES.put("jump_height", "Jump Height");
         NAMES.put("attack_speed", "Attack Speed");
         NAMES.put("damage_reduction", "Damage Reduction");
         NAMES.put("regeneration", "Regeneration");
         NAMES.put("saturation_boost", "Saturation Boost");
+        NAMES.put("hunger_efficiency", "Hunger Efficiency");
         NAMES.put("knockback_resistance", "Knockback Resistance");
 
         NAMES.put("warrior_boost", "Warrior Boost");
@@ -33,11 +33,10 @@ public final class BuffNames {
         return switch (id) {
             case "mining_speed" -> "\u26CF";
             case "walk_speed" -> "\uD83D\uDEB6";
-            case "jump_height" -> "\u2B06";
             case "attack_speed", "warrior_boost" -> "\u2694";
             case "damage_reduction", "guardian_boost" -> "\uD83D\uDEE1";
             case "regeneration" -> "\u2764";
-            case "saturation_boost", "scholar_boost" -> "\uD83C\uDF56";
+            case "saturation_boost", "hunger_efficiency", "scholar_boost" -> "\uD83C\uDF56";
             case "knockback_resistance" -> "\uD83E\uDEA8";
             case "acrobat_boost" -> "\uD83D\uDD75";
             default -> "*";

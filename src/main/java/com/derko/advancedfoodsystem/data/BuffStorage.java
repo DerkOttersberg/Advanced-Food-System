@@ -42,11 +42,6 @@ public final class BuffStorage {
 
     public static boolean add(ServerPlayer player, BuffInstance newBuff) {
         List<BuffInstance> current = get(player);
-        boolean hasSameType = current.stream().anyMatch(b -> !isCombo(b) && b.id().equals(newBuff.id()));
-        if (hasSameType) {
-            return false;
-        }
-
         boolean hasSameFoodSource = current.stream().anyMatch(b -> !isCombo(b) && b.source().equals(newBuff.source()));
         if (hasSameFoodSource) {
             return false;

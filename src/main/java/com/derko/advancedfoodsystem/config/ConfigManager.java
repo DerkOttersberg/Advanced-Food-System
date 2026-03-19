@@ -23,21 +23,58 @@ public final class ConfigManager {
 
     private static final Type FOOD_MAP_TYPE = new TypeToken<Map<String, FoodBuffEntry>>() {}.getType();
     private static final Type COMBO_MAP_TYPE = new TypeToken<Map<String, ComboEntry>>() {}.getType();
+    private static final Type EFFECT_STRENGTH_TYPE = new TypeToken<Map<String, Double>>() {}.getType();
     private static final List<String> VALID_POSITIONS = List.of("bottom_left", "bottom_right", "top_left", "top_right");
+    private static final List<String> BALANCED_ONE_HEART_FOODS = List.of(
+            "minecraft:cooked_beef",
+            "minecraft:cooked_chicken",
+            "minecraft:cooked_porkchop",
+            "minecraft:cooked_salmon",
+            "minecraft:golden_carrot",
+            "minecraft:carrot",
+            "minecraft:apple",
+            "minecraft:bread",
+            "minecraft:melon_slice"
+        );
 
     private static ModConfigData modConfig = new ModConfigData();
     private static Map<String, FoodBuffEntry> foodBuffs = new HashMap<>();
     private static Map<String, ComboEntry> comboBuffs = new HashMap<>();
+    private static Map<String, Double> effectStrengths = new HashMap<>();
 
     private static final Path BASE_DIR = FMLPaths.CONFIGDIR.get().resolve("advancedfoodsystem");
     private static final Path FOOD_CONFIG = BASE_DIR.resolve("food_buffs.json");
     private static final Path COMBO_CONFIG = BASE_DIR.resolve("buff_combinations.json");
+    private static final Path EFFECT_STRENGTH_CONFIG = BASE_DIR.resolve("effect_strengths.json");
 
     private ConfigManager() {}
 
     public static ModConfigData modConfig() { return modConfig; }
     public static Map<String, FoodBuffEntry> foodBuffs() { return foodBuffs; }
     public static Map<String, ComboEntry> comboBuffs() { return comboBuffs; }
+    public static synchronized Map<String, Double> effectStrengths() { return new HashMap<>(effectStrengths); }
+
+    public static synchronized List<String> effectStrengthKeys() {
+        return effectStrengths.keySet().stream().sorted().toList();
+    }
+
+    public static synchronized double effectStrengthMultiplier(String buffId) {
+        return effectStrengths.getOrDefault(buffId, 1.0D);
+    }
+
+    public static synchronized void setEffectStrengthMultiplier(String buffId, double value) {
+        if (buffId == null || buffId.isBlank()) {
+            return;
+        }
+        effectStrengths.put(buffId, clamp(value, 0.0D, 5.0D));
+    }
+
+    public static synchronized void saveEffectStrengths() {
+        try {
+            writeJson(EFFECT_STRENGTH_CONFIG, effectStrengths);
+        } catch (IOException ignored) {
+        }
+    }
 
     public static synchronized void loadOrCreate() {
         try {
@@ -49,9 +86,13 @@ public final class ConfigManager {
             if (!Files.exists(COMBO_CONFIG)) {
                 writeJson(COMBO_CONFIG, defaultCombinations());
             }
+            if (!Files.exists(EFFECT_STRENGTH_CONFIG)) {
+                writeJson(EFFECT_STRENGTH_CONFIG, defaultEffectStrengths());
+            }
 
             foodBuffs = readJson(FOOD_CONFIG, FOOD_MAP_TYPE, defaultFoodBuffs());
             comboBuffs = readJson(COMBO_CONFIG, COMBO_MAP_TYPE, defaultCombinations());
+            effectStrengths = readJson(EFFECT_STRENGTH_CONFIG, EFFECT_STRENGTH_TYPE, defaultEffectStrengths());
 
             sanitize();
             refreshFromNeoForgeConfigs();
@@ -59,6 +100,7 @@ public final class ConfigManager {
             modConfig = new ModConfigData();
             foodBuffs = defaultFoodBuffs();
             comboBuffs = defaultCombinations();
+            effectStrengths = defaultEffectStrengths();
         }
     }
 
@@ -91,6 +133,7 @@ public final class ConfigManager {
         try {
             modConfig.system.maxHearts = AfsConfig.MAX_HEARTS.get();
             modConfig.system.maxHeartsWithFood = AfsConfig.MAX_HEARTS_WITH_FOOD.get();
+            modConfig.system.wholeHeartHealthScaling = AfsConfig.WHOLE_HEART_HEALTH_SCALING.get();
             modConfig.system.buffDurationMultiplier = AfsConfig.BUFF_DURATION_MULTIPLIER.get();
             modConfig.system.buffMagnitudeMultiplier = AfsConfig.BUFF_MAGNITUDE_MULTIPLIER.get();
         } catch (Exception ignored) { /* COMMON config not yet loaded */ }
@@ -125,7 +168,29 @@ public final class ConfigManager {
             entry.durationSeconds = clamp(entry.durationSeconds, 15, 7200);
             entry.magnitude = clamp(entry.magnitude, 0.01D, 5.0D);
             entry.healthBonusHearts = clamp(entry.healthBonusHearts, 0.0D, 6.0D);
-            if (entry.buffs == null) entry.buffs = List.of();
+            if (entry.buffs == null) {
+                entry.buffs = List.of();
+            } else {
+                entry.buffs = entry.buffs.stream()
+                        .map(buff -> "jump_height".equals(buff) ? "walk_speed" : buff)
+                        .toList();
+            }
+        }
+
+        // Migration: keep bundled vanilla defaults at +1 heart after rebalancing.
+        for (String foodId : BALANCED_ONE_HEART_FOODS) {
+            FoodBuffEntry entry = foodBuffs.get(foodId);
+            if (entry != null && entry.healthBonusHearts > 0.0D) {
+                entry.healthBonusHearts = 1.0D;
+            }
+        }
+
+        // Migration: switch bread from old saturation_boost identity to hunger_efficiency.
+        FoodBuffEntry bread = foodBuffs.get("minecraft:bread");
+        if (bread != null && bread.buffs != null && !bread.buffs.isEmpty()) {
+            bread.buffs = bread.buffs.stream()
+                    .map(buff -> "saturation_boost".equals(buff) ? "hunger_efficiency" : buff)
+                    .toList();
         }
 
         for (ComboEntry entry : comboBuffs.values()) {
@@ -134,22 +199,47 @@ public final class ConfigManager {
             if (entry.requires == null) entry.requires = List.of();
             if (entry.buffId == null) entry.buffId = "";
         }
+
+        for (String buffId : discoverAllBuffIds()) {
+            effectStrengths.putIfAbsent(buffId, 1.0D);
+        }
+        effectStrengths.replaceAll((id, value) -> clamp(value == null ? 1.0D : value, 0.0D, 5.0D));
+    }
+
+    private static List<String> discoverAllBuffIds() {
+        List<String> ids = new ArrayList<>();
+        for (FoodBuffEntry entry : foodBuffs.values()) {
+            if (entry.buffs != null) {
+                for (String id : entry.buffs) {
+                    if (id != null && !id.isBlank() && !ids.contains(id)) {
+                        ids.add(id);
+                    }
+                }
+            }
+        }
+
+        for (ComboEntry combo : comboBuffs.values()) {
+            if (combo.buffId != null && !combo.buffId.isBlank() && !ids.contains(combo.buffId)) {
+                ids.add(combo.buffId);
+            }
+        }
+
+        return ids;
     }
 
     private static Map<String, FoodBuffEntry> defaultFoodBuffs() {
         Map<String, FoodBuffEntry> map = new HashMap<>();
-        // Hearts: beef/porkchop = 1.0 (combat heavyweights), chicken = 0.75 (mid-tier attack food),
-        // salmon = 0.75 (regen), golden_carrot = 1.5 (premium). Others = 0.5.
-        // 3 slots Ã— best foods â†’ max 3 hearts from food (base 6 + 3 = 9). Combo adds the last to 10.
+        // Rebalanced baseline: every food grants +1.0 heart.
+        // 3 slots -> base 6 + 3 = 9 hearts; Warrior combo grants the final heart to reach 10.
         map.put("minecraft:cooked_beef",     food(List.of("mining_speed"),                     1200, 0.25, 1.00));
-        map.put("minecraft:cooked_chicken",  food(List.of("attack_speed"),                     1200, 0.15, 0.75));
+        map.put("minecraft:cooked_chicken",  food(List.of("attack_speed"),                     1200, 0.15, 1.00));
         map.put("minecraft:cooked_porkchop", food(List.of("damage_reduction"),                 1200, 0.10, 1.00));
-        map.put("minecraft:cooked_salmon",   food(List.of("regeneration"),                     1200, 0.25, 0.75));
-        map.put("minecraft:golden_carrot",   food(List.of("regeneration", "damage_reduction"), 1200, 0.30, 1.50));
-        map.put("minecraft:carrot",          food(List.of("walk_speed"),                       1200, 0.15, 0.50));
-        map.put("minecraft:apple",           food(List.of("jump_height"),                      1200, 0.20, 0.50));
-        map.put("minecraft:bread",           food(List.of("saturation_boost"),                 1200, 0.35, 0.50));
-        map.put("minecraft:melon_slice",     food(List.of("knockback_resistance"),             1200, 0.20, 0.50));
+        map.put("minecraft:cooked_salmon",   food(List.of("regeneration"),                     1200, 0.25, 1.00));
+        map.put("minecraft:golden_carrot",   food(List.of("regeneration", "damage_reduction"), 1200, 0.30, 1.00));
+        map.put("minecraft:carrot",          food(List.of("walk_speed"),                       1200, 0.15, 1.00));
+        map.put("minecraft:apple",           food(List.of("regeneration"),                     1200, 0.20, 1.00));
+        map.put("minecraft:bread",           food(List.of("hunger_efficiency"),                1200, 0.35, 1.00));
+        map.put("minecraft:melon_slice",     food(List.of("knockback_resistance"),             1200, 0.20, 1.00));
         return map;
     }
 
@@ -157,6 +247,20 @@ public final class ConfigManager {
         Map<String, ComboEntry> map = new HashMap<>();
         // Warrior combo: beef (mining_speed) + carrot (walk_speed) â†’ grants the final heart to reach 10
         map.put("warrior_mode", combo(List.of("mining_speed", "walk_speed"), "warrior_boost", 1200, 1.5));
+        return map;
+    }
+
+    private static Map<String, Double> defaultEffectStrengths() {
+        Map<String, Double> map = new HashMap<>();
+        map.put("mining_speed", 1.0D);
+        map.put("walk_speed", 1.0D);
+        map.put("attack_speed", 1.0D);
+        map.put("damage_reduction", 1.0D);
+        map.put("regeneration", 1.0D);
+        map.put("hunger_efficiency", 1.0D);
+        map.put("saturation_boost", 1.0D);
+        map.put("knockback_resistance", 1.0D);
+        map.put("warrior_boost", 1.0D);
         return map;
     }
 

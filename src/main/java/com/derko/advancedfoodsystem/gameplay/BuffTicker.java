@@ -63,6 +63,9 @@ public final class BuffTicker {
                 .mapToDouble(BuffInstance::healthBonusHearts)
                 .sum();
 
+        boolean wholeHeartScaling = ConfigManager.modConfig().system.wholeHeartHealthScaling;
+        double appliedSlotBonusHearts = wholeHeartScaling ? Math.floor(slotBonusHearts) : slotBonusHearts;
+
         boolean comboActive = buffs.stream().anyMatch(b -> b.source().startsWith("combo:"));
 
         double desiredHearts;
@@ -71,7 +74,7 @@ public final class BuffTicker {
             desiredHearts = maxHearts;
         } else {
             // Without combo, food slots can add up to (maxHearts - 1); the final heart is combo-only
-            desiredHearts = Math.min(maxHearts - 1.0D, baseHearts + slotBonusHearts);
+            desiredHearts = Math.min(maxHearts - 1.0D, baseHearts + appliedSlotBonusHearts);
         }
 
         AttributeController.applyHealthCap(player, desiredHearts * 2.0D);
@@ -127,6 +130,14 @@ public final class BuffTicker {
     private static void applyContinuousEffects(ServerPlayer player, Map<String, Double> totals) {
         if (player.getFoodData().getFoodLevel() <= 0) {
             totals.merge("walk_speed", -0.10D, Double::sum);
+        }
+
+        double hungerEfficiency = totals.getOrDefault("hunger_efficiency", 0.0D);
+        if (hungerEfficiency > 0.0D && player.tickCount % 20 == 0) {
+            float currentSat = player.getFoodData().getSaturationLevel();
+            float capSat = player.getFoodData().getFoodLevel();
+            float restore = (float) Math.min(1.0D, hungerEfficiency);
+            player.getFoodData().setSaturation(Math.min(capSat, currentSat + restore));
         }
 
         double regen = totals.getOrDefault("regeneration", 0.0D);

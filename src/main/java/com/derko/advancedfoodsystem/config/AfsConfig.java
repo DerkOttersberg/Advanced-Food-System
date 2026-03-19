@@ -14,6 +14,7 @@ public final class AfsConfig {
 
     public static final ModConfigSpec.IntValue MAX_HEARTS;
     public static final ModConfigSpec.IntValue MAX_HEARTS_WITH_FOOD;
+        public static final ModConfigSpec.BooleanValue WHOLE_HEART_HEALTH_SCALING;
     public static final ModConfigSpec.DoubleValue BUFF_DURATION_MULTIPLIER;
     public static final ModConfigSpec.DoubleValue BUFF_MAGNITUDE_MULTIPLIER;
 
@@ -28,6 +29,10 @@ public final class AfsConfig {
                 .comment("Maximum hearts that food buffs can raise you to (default: 10).",
                          "The last heart above base+3 requires the Warrior combo to be active.")
                 .defineInRange("maxHeartsWithFood", 10, 2, 20);
+        WHOLE_HEART_HEALTH_SCALING = b
+                .comment("If true, food max-health gains are rounded down to whole hearts (clean vanilla heart containers).",
+                         "If false, fractional max-health gains are allowed.")
+                .define("wholeHeartHealthScaling", true);
         BUFF_DURATION_MULTIPLIER = b
                 .comment("Global multiplier for all food buff durations.",
                          "1.0 = default (20 min), 0.5 = 10 min, 2.0 = 40 min.")
