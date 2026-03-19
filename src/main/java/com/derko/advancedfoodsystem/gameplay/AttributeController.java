@@ -14,6 +14,7 @@ public final class AttributeController {
     private static final ResourceLocation MAX_HEALTH_ID      = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "max_health");
     private static final ResourceLocation MOVE_SPEED_ID      = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "move_speed");
     private static final ResourceLocation ATTACK_SPEED_ID    = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "attack_speed");
+    private static final ResourceLocation ATTACK_DAMAGE_ID   = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "attack_damage");
     private static final ResourceLocation KNOCKBACK_RES_ID   = ResourceLocation.fromNamespaceAndPath("advancedfoodsystem", "knockback_resistance");
 
     private AttributeController() {
@@ -28,12 +29,16 @@ public final class AttributeController {
     }
 
     public static void applyBuffAttributes(Player player, Map<String, Double> totals) {
+        double walk = totals.getOrDefault("walk_speed", 0.0D) - totals.getOrDefault("queasy", 0.0D);
         applyMultiplyBase(player, Attributes.MOVEMENT_SPEED, MOVE_SPEED_ID,
-                totals.getOrDefault("walk_speed", 0.0D));
+            walk);
 
         double attack = totals.getOrDefault("attack_speed", 0.0D);
-        attack += totals.getOrDefault("warrior_boost", 0.0D) * 0.08D;
+        attack -= totals.getOrDefault("fatigue", 0.0D);
         applyMultiplyBase(player, Attributes.ATTACK_SPEED, ATTACK_SPEED_ID, attack);
+
+        double attackDamage = totals.getOrDefault("attack_damage", 0.0D);
+        applyAddValue(player, Attributes.ATTACK_DAMAGE, ATTACK_DAMAGE_ID, attackDamage);
 
         double kb = totals.getOrDefault("knockback_resistance", 0.0D);
         applyAddValue(player, Attributes.KNOCKBACK_RESISTANCE, KNOCKBACK_RES_ID, Math.min(kb, 0.75D));

@@ -8,7 +8,9 @@ import net.minecraft.server.level.ServerPlayer;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public final class BuffStorage {
     public static final String ROOT_KEY = "active_buffs";
@@ -42,14 +44,22 @@ public final class BuffStorage {
 
     public static boolean add(ServerPlayer player, BuffInstance newBuff) {
         List<BuffInstance> current = get(player);
-        boolean hasSameFoodSource = current.stream().anyMatch(b -> !isCombo(b) && b.source().equals(newBuff.source()));
-        if (hasSameFoodSource) {
+        boolean hasSameExactSource = current.stream().anyMatch(b -> !isCombo(b) && b.source().equals(newBuff.source()));
+        if (hasSameExactSource) {
             return false;
         }
 
         int maxActive = Math.min(3, ConfigManager.modConfig().system.maxActiveBuffs);
-        long activeFoodSlots = current.stream().filter(b -> !isCombo(b)).count();
-        if (activeFoodSlots >= maxActive) {
+        long activeFoodSlots = countDistinctFoodSlots(current);
+        String baseSource = baseSource(newBuff.source());
+
+        boolean hasBaseSourceAlready = current.stream().anyMatch(b -> !isCombo(b) && baseSource(b.source()).equals(baseSource));
+        if (!hasBaseSourceAlready && activeFoodSlots >= maxActive) {
+            return false;
+        }
+
+        long effectsFromSameSource = current.stream().filter(b -> !isCombo(b) && baseSource(b.source()).equals(baseSource)).count();
+        if (effectsFromSameSource >= 6) {
             return false;
         }
 
@@ -61,5 +71,20 @@ public final class BuffStorage {
 
     private static boolean isCombo(BuffInstance buff) {
         return buff.source().startsWith("combo:");
+    }
+
+    public static String baseSource(String source) {
+        int idx = source.indexOf('#');
+        return idx >= 0 ? source.substring(0, idx) : source;
+    }
+
+    private static long countDistinctFoodSlots(List<BuffInstance> buffs) {
+        Set<String> bases = new HashSet<>();
+        for (BuffInstance buff : buffs) {
+            if (!isCombo(buff)) {
+                bases.add(baseSource(buff.source()));
+            }
+        }
+        return bases.size();
     }
 }

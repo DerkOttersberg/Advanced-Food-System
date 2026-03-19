@@ -27,7 +27,7 @@ public final class AfsConfig {
                 .defineInRange("maxHearts", 6, 1, 10);
         MAX_HEARTS_WITH_FOOD = b
                 .comment("Maximum hearts that food buffs can raise you to (default: 10).",
-                         "The last heart above base+3 requires the Warrior combo to be active.")
+                         "The last heart above base+3 requires a capstone combo to be active.")
                 .defineInRange("maxHeartsWithFood", 10, 2, 20);
         WHOLE_HEART_HEALTH_SCALING = b
                 .comment("If true, food max-health gains are rounded down to whole hearts (clean vanilla heart containers).",

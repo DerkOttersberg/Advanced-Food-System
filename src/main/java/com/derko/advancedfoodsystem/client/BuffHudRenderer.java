@@ -3,6 +3,7 @@ package com.derko.advancedfoodsystem.client;
 import com.derko.advancedfoodsystem.config.ConfigManager;
 import com.derko.advancedfoodsystem.data.BuffInstance;
 import com.derko.advancedfoodsystem.gameplay.BuffNames;
+import com.derko.advancedfoodsystem.gameplay.ComboEffectRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -13,7 +14,11 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Compact food buff HUD â€” bottom-right corner.
@@ -72,10 +77,8 @@ public final class BuffHudRenderer {
         boolean comboActive = all.stream().anyMatch(BuffHudRenderer::isCombo);
         if (foodBuffs.isEmpty() && !comboActive) return;
 
-        int max = Math.min(3, foodBuffs.size());
-        List<BuffInstance> show = foodBuffs.stream()
-                .sorted((a, b) -> Long.compare(a.created(), b.created()))
-                .limit(max).toList();
+        List<BuffInstance> show = groupedFoodSlots(foodBuffs).stream().limit(3).toList();
+        int max = show.size();
 
         GuiGraphics gfx = event.getGuiGraphics();
         Font font = mc.font;
@@ -131,10 +134,10 @@ public final class BuffHudRenderer {
 
         // --- Combo badge ---
         if (comboActive) {
-            BuffInstance comboBuff = all.stream().filter(BuffHudRenderer::isCombo).findFirst().orElse(null);
+            ComboTooltipData comboData = buildComboTooltipData(all);
             int badgeX = x - 14;
             int badgeY = y;
-            drawComboBadge(gfx, font, badgeX, badgeY, comboBuff, screenW, screenH);
+            drawComboBadge(gfx, font, badgeX, badgeY, comboData, screenW, screenH);
         }
 
         gfx.pose().popPose();
@@ -202,9 +205,14 @@ public final class BuffHudRenderer {
         // Food icon
         drawFoodIcon(gfx, buff.source(), x + ICON_X_OFF, y + ICON_Y_OFF);
 
+        String buffName = BuffNames.pretty(buff.id());
+        String shortName = buffName.length() > 12 ? buffName.substring(0, 12) : buffName;
+        gfx.drawString(font, shortName, x + TEXT_X, y + 4, 0xFFFFFFFF, false);
+
         // Time text (above bar)
         String time = formatShortTime(buff.timeTicks());
-        gfx.drawString(font, time, x + TEXT_X, y + 4, COL_TIME, false);
+        int timeX = x + SLOT_W - 4 - font.width(time);
+        gfx.drawString(font, time, timeX, y + 14, COL_TIME, false);
 
         // Progress bar
         int barX = x + TEXT_X;
@@ -230,7 +238,7 @@ public final class BuffHudRenderer {
     // -------------------------------------------------------------------------
 
     private static void drawComboBadge(GuiGraphics gfx, Font font,
-                                       int x, int y, BuffInstance comboBuff,
+                                       int x, int y, ComboTooltipData comboData,
                                        int screenW, int screenH) {
         int bw = 12, bh = 12;
         gfx.fill(x, y, x + bw, y + bh, COL_BG);
@@ -238,10 +246,10 @@ public final class BuffHudRenderer {
         gfx.fill(x, y + bh - 1, x + bw, y + bh, 0xFFAA8800);
         gfx.fill(x, y, x + 1, y + bh, 0xFFAA8800);
         gfx.fill(x + bw - 1, y, x + bw, y + bh, 0xFFAA8800);
-        gfx.drawString(font, "\u2605", x + 2, y + 2, 0xFFFFC857, false); // â˜…
+        gfx.drawString(font, "\u2605", x + 2, y + 2, 0xFFFFC857, false);
 
-        if (comboBuff != null) {
-            maybeDrawComboTooltip(gfx, font, x, y, bw, bh, comboBuff, screenW, screenH);
+        if (comboData != null && comboData.primary() != null) {
+            maybeDrawComboTooltip(gfx, font, x, y, bw, bh, comboData, screenW, screenH);
         }
     }
 
@@ -278,26 +286,34 @@ public final class BuffHudRenderer {
 
     private static void maybeDrawComboTooltip(GuiGraphics gfx, Font font,
                                               int x, int y, int w, int h,
-                                              BuffInstance comboBuff,
+                                              ComboTooltipData comboData,
                                               int screenW, int screenH) {
         int[] mouse = scaledMouse();
         if (mouse[0] < x || mouse[0] > x + w || mouse[1] < y || mouse[1] > y + h) return;
 
-        String title    = "\u2605 Warrior Combo";
-        String requires = "Requires: Beef + Carrot";
-        String bonus    = "Grants final heart (+1\u2665 to reach 10)";
-        String timeStr  = formatShortTime(comboBuff.timeTicks()) + " remaining";
+        BuffInstance comboBuff = comboData.primary();
+        String title = "\u2605 " + BuffNames.pretty(comboBuff.id());
+        String effectLine = formatComboEffects(comboBuff.id(), comboBuff.magnitude());
+        String typeLine = ComboEffectRegistry.isCapstone(comboBuff.id())
+                ? "Capstone combo active (+final heart unlock)"
+                : "Pair combo active";
+        String reqLine = "Needs: " + ComboEffectRegistry.requiredFoods(comboBuff.id()).stream()
+            .map(BuffHudRenderer::friendlyId)
+            .sorted()
+            .collect(Collectors.joining(" + "));
+        String timeStr = formatShortTime(comboBuff.timeTicks()) + " remaining";
 
-        int tw = maxWidth(font, title, requires, bonus, timeStr) + 8;
-        int th = 42;
+        int tw = maxWidth(font, title, effectLine, typeLine, reqLine, timeStr) + 8;
+        int th = 52;
         int tx = resolveTooltipX(x, w, tw, screenW);
         int ty = resolveTooltipY(y, th, screenH);
 
         drawTooltipBox(gfx, tx, ty, tw, th);
-        gfx.drawString(font, title,    tx + 4, ty + 3,  0xFFFFC857, false);
-        gfx.drawString(font, requires, tx + 4, ty + 13, 0xFFAAAAAA, false);
-        gfx.drawString(font, bonus,    tx + 4, ty + 23, COL_HEART_ON, false);
-        gfx.drawString(font, timeStr,  tx + 4, ty + 33, COL_TIME,   false);
+        gfx.drawString(font, title, tx + 4, ty + 3, 0xFFFFC857, false);
+        gfx.drawString(font, effectLine, tx + 4, ty + 13, 0xFFFFFFFF, false);
+        gfx.drawString(font, typeLine, tx + 4, ty + 23, COL_HEART_ON, false);
+        gfx.drawString(font, reqLine, tx + 4, ty + 33, 0xFFAAAAAA, false);
+        gfx.drawString(font, timeStr, tx + 4, ty + 43, COL_TIME, false);
     }
 
     // -------------------------------------------------------------------------
@@ -342,7 +358,7 @@ public final class BuffHudRenderer {
 
     private static void drawFoodIcon(GuiGraphics gfx, String source, int x, int y) {
         try {
-            ResourceLocation id = ResourceLocation.parse(source);
+            ResourceLocation id = ResourceLocation.parse(baseSource(source));
             Item item = BuiltInRegistries.ITEM.get(id);
             if (item != null && item != BuiltInRegistries.ITEM.get(ResourceLocation.withDefaultNamespace("air"))) {
                 gfx.renderItem(new ItemStack(item), x, y);
@@ -375,7 +391,7 @@ public final class BuffHudRenderer {
     private static String friendlyId(String source) {
         // Turn "minecraft:cooked_beef" â†’ "Cooked Beef"
         try {
-            String path = ResourceLocation.parse(source).getPath();
+            String path = ResourceLocation.parse(baseSource(source)).getPath();
             String[] parts = path.split("_");
             StringBuilder sb = new StringBuilder();
             for (String p : parts) {
@@ -390,6 +406,49 @@ public final class BuffHudRenderer {
 
     private static boolean isCombo(BuffInstance buff) {
         return buff.source().startsWith("combo:");
+    }
+
+    private static ComboTooltipData buildComboTooltipData(List<BuffInstance> buffs) {
+        List<BuffInstance> combos = buffs.stream()
+                .filter(BuffHudRenderer::isCombo)
+                .sorted(Comparator
+                        .comparing((BuffInstance buff) -> !ComboEffectRegistry.isCapstone(buff.id()))
+                        .thenComparing((BuffInstance buff) -> -buff.timeTicks()))
+                .toList();
+
+        if (combos.isEmpty()) {
+            return null;
+        }
+
+        return new ComboTooltipData(combos.getFirst(), combos);
+    }
+
+    private static String formatComboEffects(String comboId, double comboMagnitude) {
+        Map<String, Double> effects = ComboEffectRegistry.effects(comboId);
+        if (effects.isEmpty()) {
+            return "No combo effects";
+        }
+
+        return effects.entrySet().stream()
+                .map(entry -> BuffNames.pretty(entry.getKey()) + " " + formatSigned(entry.getValue() * comboMagnitude))
+                .collect(Collectors.joining(", "));
+    }
+
+    private static String formatSigned(double value) {
+        return String.format("%+.2f", value);
+    }
+
+    private static String baseSource(String source) {
+        int idx = source.indexOf('#');
+        return idx >= 0 ? source.substring(0, idx) : source;
+    }
+
+    private static List<BuffInstance> groupedFoodSlots(List<BuffInstance> foodBuffs) {
+        Map<String, BuffInstance> grouped = new LinkedHashMap<>();
+        foodBuffs.stream()
+                .sorted((a, b) -> Long.compare(a.created(), b.created()))
+                .forEach(buff -> grouped.putIfAbsent(baseSource(buff.source()), buff));
+        return List.copyOf(grouped.values());
     }
 
     private static int clamp(int value, int min, int max) {

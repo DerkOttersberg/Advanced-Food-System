@@ -124,26 +124,25 @@ public final class CommonEvents {
             return;
         }
 
-        if (applyConfiguredFoodBuff(player, key, entry)) {
-            if (!player.getAbilities().instabuild) {
-                stack.shrink(1);
-                if (stack.isEmpty()) {
-                    player.setItemInHand(event.getHand(), ItemStack.EMPTY);
-                }
-            }
-
-            player.swing(event.getHand(), true);
-            event.setCanceled(true);
-            event.setCancellationResult(InteractionResult.SUCCESS);
-        }
+        // Let the item play its normal use animation even at full hunger.
+        // The actual buff is still applied on LivingEntityUseItemEvent.Finish.
+        player.startUsingItem(event.getHand());
+        event.setCanceled(true);
+        event.setCancellationResult(InteractionResult.CONSUME);
     }
 
     private static boolean applyConfiguredFoodBuff(ServerPlayer player, String sourceKey, FoodBuffEntry entry) {
-        String secondaryBuffId = entry.buffs.getFirst();
+        if (entry.buffs == null || entry.buffs.isEmpty()) {
+            return false;
+        }
+
+        int durationTicks = (int) (Math.max(15, entry.durationSeconds) * Math.max(0.1D, ConfigManager.modConfig().system.buffDurationMultiplier)) * 20;
+        boolean addedAny = false;
+        String primaryBuffId = entry.buffs.getFirst();
 
         // === Pre-application hook ===
         BuffEvents.BuffApplyingEvent applyingEvent = new BuffEvents.BuffApplyingEvent(
-                player, sourceKey, secondaryBuffId, entry.magnitude, entry.healthBonusHearts
+            player, sourceKey, primaryBuffId, entry.magnitude, entry.healthBonusHearts
         );
         NeoForge.EVENT_BUS.post(applyingEvent);
         
@@ -152,64 +151,88 @@ public final class CommonEvents {
         }
 
         // Check API application filters
-        if (!BuffModifiers.shouldApplyBuff(player, sourceKey, secondaryBuffId)) {
+        if (!BuffModifiers.shouldApplyBuff(player, sourceKey, primaryBuffId)) {
             return false;
         }
 
-        double durationMult = Math.max(0.1D, ConfigManager.modConfig().system.buffDurationMultiplier);
         double globalMagnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
-        double perEffectMult = ConfigManager.effectStrengthMultiplier(secondaryBuffId);
+        double modifiedHealth = BuffModifiers.applyHealthModifiers(player, primaryBuffId, applyingEvent.getHealthBonus());
 
-        // === Apply API magnitude modifiers ===
-        double modifiedMagnitude = BuffModifiers.applyMagnitudeModifiers(
-                player, secondaryBuffId, applyingEvent.getMagnitude()
-        );
+        int index = 0;
+        for (String buffId : entry.buffs) {
+            if (buffId == null || buffId.isBlank()) {
+                continue;
+            }
 
-        // === Apply API health modifiers ===
-        double modifiedHealth = BuffModifiers.applyHealthModifiers(
-                player, secondaryBuffId, applyingEvent.getHealthBonus()
-        );
+            double perEffectMult = ConfigManager.effectStrengthMultiplier(buffId);
+            double modifiedMagnitude = BuffModifiers.applyMagnitudeModifiers(player, buffId, applyingEvent.getMagnitude());
+            double effectiveMagnitude = modifiedMagnitude * globalMagnitudeMult * perEffectMult;
 
-        int durationTicks = (int) (Math.max(15, entry.durationSeconds) * durationMult) * 20;
-        double effectiveMagnitude = modifiedMagnitude * globalMagnitudeMult * perEffectMult;
-
-        BuffInstance instance = new BuffInstance(
-                secondaryBuffId,
-                durationTicks,
-                durationTicks,
-                effectiveMagnitude,
-                modifiedHealth,
-                sourceKey,
-                player.level().getGameTime()
-        );
-
-        boolean added = BuffStorage.add(player, instance);
-        if (added) {
-            // === Post-application event ===
-            BuffData buffData = new BuffData(
-                    secondaryBuffId,
+            BuffInstance instance = new BuffInstance(
+                    buffId,
                     durationTicks,
                     durationTicks,
                     effectiveMagnitude,
                     modifiedHealth,
-                    sourceKey,
+                    sourceKey + "#p" + index,
                     player.level().getGameTime()
             );
-            BuffEvents.BuffAppliedEvent appliedEvent = new BuffEvents.BuffAppliedEvent(player, buffData);
-            NeoForge.EVENT_BUS.post(appliedEvent);
 
-            if (ConfigManager.modConfig().notifications.showBuffApplied) {
-                String msg = "+" + formatHeartLabel(modifiedHealth) + ", " + BuffNames.pretty(secondaryBuffId);
-                player.displayClientMessage(Component.literal("\u00a76" + msg), true);
+            if (BuffStorage.add(player, instance)) {
+                addedAny = true;
+                BuffData buffData = new BuffData(
+                        buffId,
+                        durationTicks,
+                        durationTicks,
+                        effectiveMagnitude,
+                        modifiedHealth,
+                        sourceKey,
+                        player.level().getGameTime()
+                );
+                NeoForge.EVENT_BUS.post(new BuffEvents.BuffAppliedEvent(player, buffData));
+
+                if ("saturation_boost".equals(buffId)) {
+                    float add = (float) (2.0F * effectiveMagnitude);
+                    player.getFoodData().setSaturation(player.getFoodData().getSaturationLevel() + add);
+                }
+            }
+            index++;
+        }
+
+        int debuffIndex = 0;
+        if (entry.debuffs != null) {
+            for (String debuffId : entry.debuffs) {
+                if (debuffId == null || debuffId.isBlank()) {
+                    continue;
+                }
+                double effectMult = ConfigManager.effectStrengthMultiplier(debuffId);
+                double effectiveDebuffMag = Math.max(0.0D, entry.debuffMagnitude) * effectMult;
+                BuffInstance debuff = new BuffInstance(
+                        debuffId,
+                        durationTicks,
+                        durationTicks,
+                        effectiveDebuffMag,
+                        0.0D,
+                        sourceKey + "#d" + debuffIndex,
+                        player.level().getGameTime()
+                );
+                BuffStorage.add(player, debuff);
+                debuffIndex++;
             }
         }
 
-        if (entry.buffs.contains("saturation_boost")) {
-            float add = (float) (2.0F * effectiveMagnitude);
-            player.getFoodData().setSaturation(player.getFoodData().getSaturationLevel() + add);
+        if (addedAny && ConfigManager.modConfig().notifications.showBuffApplied) {
+            String msg = "+" + formatHeartLabel(modifiedHealth) + ", " + BuffNames.pretty(primaryBuffId);
+            if ("heart_bonus".equals(primaryBuffId)) {
+                msg = "+" + formatHeartLabel(modifiedHealth);
+            }
+            if (entry.debuffs != null && !entry.debuffs.isEmpty()) {
+                msg += " (risk)";
+            }
+            player.displayClientMessage(Component.literal("\u00a76" + msg), true);
         }
 
-        return added;
+        return addedAny;
     }
 
     @SubscribeEvent
@@ -217,19 +240,32 @@ public final class CommonEvents {
         ItemStack stack = event.getItemStack();
         ResourceLocation keyLoc = stack.getItem().builtInRegistryHolder().key().location();
         FoodBuffEntry entry = ConfigManager.foodBuffs().get(keyLoc.toString());
-        if (entry == null || entry.buffs == null || entry.buffs.isEmpty()) {
+        if (entry == null) {
             return;
         }
-
-        String secondary = entry.buffs.getFirst();
         double globalMagnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
-        double perEffectMult = ConfigManager.effectStrengthMultiplier(secondary);
-        double effectiveMagnitude = entry.magnitude * globalMagnitudeMult * perEffectMult;
 
         event.getToolTip().add(Component.literal("Bonus Health: +" + formatHeartLabel(entry.healthBonusHearts)).withStyle(ChatFormatting.GOLD));
-        event.getToolTip().add(Component.literal("Buff: " + BuffNames.pretty(secondary) + " x" + String.format("%.2f", effectiveMagnitude)).withStyle(ChatFormatting.YELLOW));
-        event.getToolTip().add(Component.literal("Strength Mod: global x" + String.format("%.2f", globalMagnitudeMult)
-                + " | effect x" + String.format("%.2f", perEffectMult)).withStyle(ChatFormatting.DARK_GRAY));
+        if (entry.buffs != null && !entry.buffs.isEmpty()) {
+            for (String buff : entry.buffs) {
+                if ("heart_bonus".equals(buff)) {
+                    continue;
+                }
+                double perEffectMult = ConfigManager.effectStrengthMultiplier(buff);
+                double effectiveMagnitude = entry.magnitude * globalMagnitudeMult * perEffectMult;
+                event.getToolTip().add(Component.literal("Buff: " + BuffNames.pretty(buff) + " x" + String.format("%.2f", effectiveMagnitude)).withStyle(ChatFormatting.YELLOW));
+            }
+        }
+
+        if (entry.debuffs != null && !entry.debuffs.isEmpty()) {
+            for (String debuff : entry.debuffs) {
+                double perEffectMult = ConfigManager.effectStrengthMultiplier(debuff);
+                double effectiveMagnitude = entry.debuffMagnitude * perEffectMult;
+                event.getToolTip().add(Component.literal("Debuff: " + BuffNames.pretty(debuff) + " x" + String.format("%.2f", effectiveMagnitude)).withStyle(ChatFormatting.RED));
+            }
+        }
+
+        event.getToolTip().add(Component.literal("Strength Mod: global x" + String.format("%.2f", globalMagnitudeMult)).withStyle(ChatFormatting.DARK_GRAY));
         event.getToolTip().add(Component.literal("Duration: " + entry.durationSeconds + "s").withStyle(ChatFormatting.GRAY));
     }
 
@@ -257,9 +293,13 @@ public final class CommonEvents {
         Map<String, Double> totals = BuffMath.aggregateMagnitudes(buffs);
 
         double reduction = totals.getOrDefault("damage_reduction", 0.0D);
+        double frailty = totals.getOrDefault("frailty", 0.0D);
         if (reduction > 0.0D) {
             reduction = Math.min(0.75D, reduction);
-            event.setNewDamage((float) (event.getNewDamage() * (1.0D - reduction)));
         }
+
+        double increased = 1.0D + Math.min(0.25D, Math.max(0.0D, frailty));
+        double reduced = 1.0D - reduction;
+        event.setNewDamage((float) (event.getNewDamage() * increased * reduced));
     }
 }

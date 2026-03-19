@@ -41,6 +41,7 @@ public final class ConfigManager {
     private static Map<String, FoodBuffEntry> foodBuffs = new HashMap<>();
     private static Map<String, ComboEntry> comboBuffs = new HashMap<>();
     private static Map<String, Double> effectStrengths = new HashMap<>();
+    private static boolean hungerDebugEnabled = false;
 
     private static final Path BASE_DIR = FMLPaths.CONFIGDIR.get().resolve("advancedfoodsystem");
     private static final Path FOOD_CONFIG = BASE_DIR.resolve("food_buffs.json");
@@ -56,6 +57,14 @@ public final class ConfigManager {
 
     public static synchronized List<String> effectStrengthKeys() {
         return effectStrengths.keySet().stream().sorted().toList();
+    }
+
+    public static synchronized boolean isHungerDebugEnabled() {
+        return hungerDebugEnabled;
+    }
+
+    public static synchronized void setHungerDebugEnabled(boolean enabled) {
+        hungerDebugEnabled = enabled;
     }
 
     public static synchronized double effectStrengthMultiplier(String buffId) {
@@ -94,6 +103,8 @@ public final class ConfigManager {
             comboBuffs = readJson(COMBO_CONFIG, COMBO_MAP_TYPE, defaultCombinations());
             effectStrengths = readJson(EFFECT_STRENGTH_CONFIG, EFFECT_STRENGTH_TYPE, defaultEffectStrengths());
 
+            mergeMissingDefaultFoods();
+
             sanitize();
             refreshFromNeoForgeConfigs();
         } catch (Exception ignored) {
@@ -101,6 +112,42 @@ public final class ConfigManager {
             foodBuffs = defaultFoodBuffs();
             comboBuffs = defaultCombinations();
             effectStrengths = defaultEffectStrengths();
+        }
+    }
+
+    private static void mergeMissingDefaultFoods() {
+        Map<String, FoodBuffEntry> defaults = defaultFoodBuffs();
+        boolean changed = false;
+
+        for (Map.Entry<String, FoodBuffEntry> defaultEntry : defaults.entrySet()) {
+            FoodBuffEntry existing = foodBuffs.get(defaultEntry.getKey());
+            if (existing == null) {
+                foodBuffs.put(defaultEntry.getKey(), defaultEntry.getValue());
+                changed = true;
+                continue;
+            }
+
+            FoodBuffEntry def = defaultEntry.getValue();
+            if ((existing.tags == null || existing.tags.isEmpty()) && def.tags != null && !def.tags.isEmpty()) {
+                existing.tags = new ArrayList<>(def.tags);
+                changed = true;
+            }
+            if ((existing.debuffs == null || existing.debuffs.isEmpty()) && def.debuffs != null && !def.debuffs.isEmpty()) {
+                existing.debuffs = new ArrayList<>(def.debuffs);
+                existing.debuffMagnitude = def.debuffMagnitude;
+                changed = true;
+            }
+            if (existing.healthBonusHearts <= 0.0D && def.healthBonusHearts > 0.0D) {
+                existing.healthBonusHearts = def.healthBonusHearts;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            try {
+                writeJson(FOOD_CONFIG, foodBuffs);
+            } catch (IOException ignored) {
+            }
         }
     }
 
@@ -167,6 +214,7 @@ public final class ConfigManager {
         for (FoodBuffEntry entry : foodBuffs.values()) {
             entry.durationSeconds = clamp(entry.durationSeconds, 15, 7200);
             entry.magnitude = clamp(entry.magnitude, 0.01D, 5.0D);
+            entry.debuffMagnitude = clamp(entry.debuffMagnitude, 0.0D, 1.0D);
             entry.healthBonusHearts = clamp(entry.healthBonusHearts, 0.0D, 6.0D);
             if (entry.buffs == null) {
                 entry.buffs = List.of();
@@ -174,6 +222,12 @@ public final class ConfigManager {
                 entry.buffs = entry.buffs.stream()
                         .map(buff -> "jump_height".equals(buff) ? "walk_speed" : buff)
                         .toList();
+            }
+            if (entry.debuffs == null) {
+                entry.debuffs = List.of();
+            }
+            if (entry.tags == null) {
+                entry.tags = List.of();
             }
         }
 
@@ -216,6 +270,13 @@ public final class ConfigManager {
                     }
                 }
             }
+            if (entry.debuffs != null) {
+                for (String id : entry.debuffs) {
+                    if (id != null && !id.isBlank() && !ids.contains(id)) {
+                        ids.add(id);
+                    }
+                }
+            }
         }
 
         for (ComboEntry combo : comboBuffs.values()) {
@@ -229,25 +290,52 @@ public final class ConfigManager {
 
     private static Map<String, FoodBuffEntry> defaultFoodBuffs() {
         Map<String, FoodBuffEntry> map = new HashMap<>();
-        // Rebalanced baseline: every food grants +1.0 heart.
-        // 3 slots -> base 6 + 3 = 9 hearts; Warrior combo grants the final heart to reach 10.
-        map.put("minecraft:cooked_beef",     food(List.of("mining_speed"),                     1200, 0.25, 1.00));
-        map.put("minecraft:cooked_chicken",  food(List.of("attack_speed"),                     1200, 0.15, 1.00));
-        map.put("minecraft:cooked_porkchop", food(List.of("damage_reduction"),                 1200, 0.10, 1.00));
-        map.put("minecraft:cooked_salmon",   food(List.of("regeneration"),                     1200, 0.25, 1.00));
-        map.put("minecraft:golden_carrot",   food(List.of("regeneration", "damage_reduction"), 1200, 0.30, 1.00));
-        map.put("minecraft:carrot",          food(List.of("walk_speed"),                       1200, 0.15, 1.00));
-        map.put("minecraft:apple",           food(List.of("regeneration"),                     1200, 0.20, 1.00));
-        map.put("minecraft:bread",           food(List.of("hunger_efficiency"),                1200, 0.35, 1.00));
-        map.put("minecraft:melon_slice",     food(List.of("knockback_resistance"),             1200, 0.20, 1.00));
+        // Complete baseline matrix (all 40 edible foods); 20 minute base effects/debuffs.
+        map.put("minecraft:apple", food(List.of("regeneration"), List.of(), List.of("S"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:mushroom_stew", food(List.of("heart_bonus"), List.of(), List.of("N"), 1200, 0.01, 0.04, 1.0));
+        map.put("minecraft:bread", food(List.of("hunger_efficiency"), List.of(), List.of("U"), 1200, 0.18, 0.04, 1.0));
+        map.put("minecraft:porkchop", food(List.of("attack_damage"), List.of("frailty"), List.of("O", "R"), 1200, 0.07, 0.04, 1.0));
+        map.put("minecraft:cooked_porkchop", food(List.of("damage_reduction"), List.of(), List.of("D"), 1200, 0.12, 0.04, 1.0));
+        map.put("minecraft:golden_apple", food(List.of("regeneration", "damage_reduction"), List.of(), List.of("S", "D"), 1200, 0.18, 0.04, 1.0));
+        map.put("minecraft:enchanted_golden_apple", food(List.of("regeneration", "damage_reduction", "xp_gain"), List.of(), List.of("S", "D", "U"), 1200, 0.12, 0.04, 1.0));
+        map.put("minecraft:cod", food(List.of("xp_gain"), List.of(), List.of("U"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:salmon", food(List.of("regeneration", "xp_gain"), List.of(), List.of("S", "U"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:tropical_fish", food(List.of("walk_speed", "xp_gain"), List.of(), List.of("M", "U"), 1200, 0.05, 0.04, 1.0));
+        map.put("minecraft:pufferfish", food(List.of("damage_reduction", "xp_gain"), List.of("queasy"), List.of("D", "U", "R"), 1200, 0.12, 0.03, 1.0));
+        map.put("minecraft:cooked_cod", food(List.of("xp_gain", "hunger_efficiency"), List.of(), List.of("U"), 1200, 0.12, 0.04, 1.0));
+        map.put("minecraft:cooked_salmon", food(List.of("regeneration"), List.of(), List.of("S"), 1200, 0.14, 0.04, 1.0));
+        map.put("minecraft:cookie", food(List.of("xp_gain", "mining_speed"), List.of(), List.of("U"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:melon_slice", food(List.of("knockback_resistance", "walk_speed"), List.of(), List.of("M", "D"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:beef", food(List.of("attack_damage"), List.of("fatigue"), List.of("O", "R"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:cooked_beef", food(List.of("attack_damage", "mining_speed"), List.of(), List.of("O", "U"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:chicken", food(List.of("attack_speed"), List.of("appetite_leak"), List.of("O", "R"), 1200, 0.10, 0.06, 1.0));
+        map.put("minecraft:cooked_chicken", food(List.of("attack_speed"), List.of(), List.of("O"), 1200, 0.16, 0.04, 1.0));
+        map.put("minecraft:rotten_flesh", food(List.of("attack_damage", "hunger_efficiency"), List.of("frailty"), List.of("O", "U", "R"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:spider_eye", food(List.of("attack_damage", "xp_gain"), List.of("fatigue"), List.of("O", "U", "R"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:carrot", food(List.of("walk_speed"), List.of(), List.of("M"), 1200, 0.14, 0.04, 1.0));
+        map.put("minecraft:potato", food(List.of("hunger_efficiency"), List.of(), List.of("U"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:baked_potato", food(List.of("hunger_efficiency", "saturation_boost"), List.of(), List.of("U", "S"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:poisonous_potato", food(List.of("walk_speed", "xp_gain"), List.of("frailty"), List.of("M", "U", "R"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:golden_carrot", food(List.of("regeneration", "damage_reduction", "xp_gain"), List.of(), List.of("S", "D", "U"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:pumpkin_pie", food(List.of("hunger_efficiency", "saturation_boost"), List.of(), List.of("U", "S"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:rabbit", food(List.of("walk_speed", "attack_damage"), List.of("appetite_leak"), List.of("M", "O", "R"), 1200, 0.05, 0.06, 1.0));
+        map.put("minecraft:cooked_rabbit", food(List.of("walk_speed", "attack_damage"), List.of(), List.of("M", "O"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:rabbit_stew", food(List.of("heart_bonus"), List.of(), List.of("N"), 1200, 0.01, 0.04, 1.0));
+        map.put("minecraft:mutton", food(List.of("attack_damage"), List.of("frailty"), List.of("O", "R"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:cooked_mutton", food(List.of("damage_reduction"), List.of(), List.of("D"), 1200, 0.10, 0.04, 1.0));
+        map.put("minecraft:chorus_fruit", food(List.of("walk_speed", "knockback_resistance"), List.of(), List.of("M"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:beetroot", food(List.of("xp_gain"), List.of(), List.of("U"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:beetroot_soup", food(List.of("heart_bonus"), List.of(), List.of("N"), 1200, 0.01, 0.04, 1.0));
+        map.put("minecraft:dried_kelp", food(List.of("hunger_efficiency", "mining_speed"), List.of(), List.of("U"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:suspicious_stew", food(List.of("heart_bonus"), List.of(), List.of("N"), 1200, 0.01, 0.04, 1.0));
+        map.put("minecraft:sweet_berries", food(List.of("walk_speed", "xp_gain"), List.of(), List.of("M", "U"), 1200, 0.06, 0.04, 1.0));
+        map.put("minecraft:glow_berries", food(List.of("xp_gain", "mining_speed"), List.of(), List.of("U"), 1200, 0.08, 0.04, 1.0));
+        map.put("minecraft:cake", food(List.of("saturation_boost", "hunger_efficiency"), List.of(), List.of("U", "S"), 1200, 0.08, 0.04, 1.0));
         return map;
     }
 
     private static Map<String, ComboEntry> defaultCombinations() {
-        Map<String, ComboEntry> map = new HashMap<>();
-        // Warrior combo: beef (mining_speed) + carrot (walk_speed) â†’ grants the final heart to reach 10
-        map.put("warrior_mode", combo(List.of("mining_speed", "walk_speed"), "warrior_boost", 1200, 1.5));
-        return map;
+        return new HashMap<>();
     }
 
     private static Map<String, Double> defaultEffectStrengths() {
@@ -260,15 +348,25 @@ public final class ConfigManager {
         map.put("hunger_efficiency", 1.0D);
         map.put("saturation_boost", 1.0D);
         map.put("knockback_resistance", 1.0D);
-        map.put("warrior_boost", 1.0D);
+        map.put("attack_damage", 1.0D);
+        map.put("xp_gain", 1.0D);
+        map.put("frailty", 1.0D);
+        map.put("fatigue", 1.0D);
+        map.put("queasy", 1.0D);
+        map.put("appetite_leak", 1.0D);
+        map.put("heart_bonus", 1.0D);
         return map;
     }
 
-    private static FoodBuffEntry food(List<String> buffs, int durationSeconds, double magnitude, double healthBonusHearts) {
+    private static FoodBuffEntry food(List<String> buffs, List<String> debuffs, List<String> tags,
+                                      int durationSeconds, double magnitude, double debuffMagnitude, double healthBonusHearts) {
         FoodBuffEntry entry = new FoodBuffEntry();
         entry.buffs = buffs;
+        entry.debuffs = debuffs;
+        entry.tags = tags;
         entry.durationSeconds = durationSeconds;
         entry.magnitude = magnitude;
+        entry.debuffMagnitude = debuffMagnitude;
         entry.healthBonusHearts = healthBonusHearts;
         return entry;
     }

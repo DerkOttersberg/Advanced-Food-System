@@ -33,7 +33,6 @@ public final class ClientEvents {
         Map<String, Double> totals = BuffMath.aggregateMagnitudes(buffs);
 
         double mining = totals.getOrDefault("mining_speed", 0.0D);
-        mining += totals.getOrDefault("warrior_boost", 0.0D) * 0.10D;
 
         if (mining > 0.0D) {
             event.setNewSpeed((float) (event.getOriginalSpeed() * (1.0D + mining)));

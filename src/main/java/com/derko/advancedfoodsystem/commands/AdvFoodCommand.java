@@ -20,6 +20,19 @@ public final class AdvFoodCommand {
                                     context.getSource().sendSuccess(() -> Component.literal("Advanced Food config reloaded."), true);
                                     return 1;
                                 }))
+                        .then(Commands.literal("debughunger")
+                                .then(Commands.literal("on")
+                                        .executes(context -> {
+                                            ConfigManager.setHungerDebugEnabled(true);
+                                            context.getSource().sendSuccess(() -> Component.literal("Advanced Food hunger debug enabled."), true);
+                                            return 1;
+                                        }))
+                                .then(Commands.literal("off")
+                                        .executes(context -> {
+                                            ConfigManager.setHungerDebugEnabled(false);
+                                            context.getSource().sendSuccess(() -> Component.literal("Advanced Food hunger debug disabled."), true);
+                                            return 1;
+                                        })))
         );
     }
 }
