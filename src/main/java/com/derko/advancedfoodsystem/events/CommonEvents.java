@@ -8,6 +8,9 @@ import com.derko.advancedfoodsystem.data.BuffMath;
 import com.derko.advancedfoodsystem.data.BuffStorage;
 import com.derko.advancedfoodsystem.gameplay.BuffNames;
 import com.derko.advancedfoodsystem.gameplay.BuffTicker;
+import com.derko.seamlessapi.api.BuffData;
+import com.derko.seamlessapi.api.BuffEvents;
+import com.derko.seamlessapi.api.BuffModifiers;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -24,6 +27,7 @@ import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +44,26 @@ public final class CommonEvents {
     @SubscribeEvent
     public static void onPlayerClone(PlayerEvent.Clone event) {
         if (event.isWasDeath()) {
+            ServerPlayer player = (ServerPlayer) event.getEntity();
+            List<BuffInstance> buffs = BuffStorage.get(player);
+            
+            // Fire removal events for all buffs cleared by death
+            for (BuffInstance buff : buffs) {
+                BuffData buffData = new BuffData(
+                        buff.id(),
+                        buff.timeTicks(),
+                        buff.totalTicks(),
+                        buff.magnitude(),
+                        buff.healthBonusHearts(),
+                        buff.source(),
+                        buff.created()
+                );
+                BuffEvents.BuffRemovedEvent event2 = new BuffEvents.BuffRemovedEvent(
+                        player, buffData, BuffEvents.BuffRemovedEvent.RemovalReason.DEATH
+                );
+                NeoForge.EVENT_BUS.post(event2);
+            }
+            
             event.getEntity().getPersistentData().remove(BuffStorage.ROOT_KEY);
         }
     }
@@ -117,27 +141,67 @@ public final class CommonEvents {
     private static boolean applyConfiguredFoodBuff(ServerPlayer player, String sourceKey, FoodBuffEntry entry) {
         String secondaryBuffId = entry.buffs.getFirst();
 
+        // === Pre-application hook ===
+        BuffEvents.BuffApplyingEvent applyingEvent = new BuffEvents.BuffApplyingEvent(
+                player, sourceKey, secondaryBuffId, entry.magnitude, entry.healthBonusHearts
+        );
+        NeoForge.EVENT_BUS.post(applyingEvent);
+        
+        if (applyingEvent.isCanceled()) {
+            return false;
+        }
+
+        // Check API application filters
+        if (!BuffModifiers.shouldApplyBuff(player, sourceKey, secondaryBuffId)) {
+            return false;
+        }
+
         double durationMult = Math.max(0.1D, ConfigManager.modConfig().system.buffDurationMultiplier);
         double globalMagnitudeMult = Math.max(0.1D, ConfigManager.modConfig().system.buffMagnitudeMultiplier);
         double perEffectMult = ConfigManager.effectStrengthMultiplier(secondaryBuffId);
 
+        // === Apply API magnitude modifiers ===
+        double modifiedMagnitude = BuffModifiers.applyMagnitudeModifiers(
+                player, secondaryBuffId, applyingEvent.getMagnitude()
+        );
+
+        // === Apply API health modifiers ===
+        double modifiedHealth = BuffModifiers.applyHealthModifiers(
+                player, secondaryBuffId, applyingEvent.getHealthBonus()
+        );
+
         int durationTicks = (int) (Math.max(15, entry.durationSeconds) * durationMult) * 20;
-        double effectiveMagnitude = entry.magnitude * globalMagnitudeMult * perEffectMult;
+        double effectiveMagnitude = modifiedMagnitude * globalMagnitudeMult * perEffectMult;
 
         BuffInstance instance = new BuffInstance(
                 secondaryBuffId,
                 durationTicks,
                 durationTicks,
                 effectiveMagnitude,
-                entry.healthBonusHearts,
+                modifiedHealth,
                 sourceKey,
                 player.level().getGameTime()
         );
 
         boolean added = BuffStorage.add(player, instance);
-        if (added && ConfigManager.modConfig().notifications.showBuffApplied) {
-            String msg = "+" + formatHeartLabel(entry.healthBonusHearts) + ", " + BuffNames.pretty(secondaryBuffId);
-            player.displayClientMessage(Component.literal("\u00a76" + msg), true);
+        if (added) {
+            // === Post-application event ===
+            BuffData buffData = new BuffData(
+                    secondaryBuffId,
+                    durationTicks,
+                    durationTicks,
+                    effectiveMagnitude,
+                    modifiedHealth,
+                    sourceKey,
+                    player.level().getGameTime()
+            );
+            BuffEvents.BuffAppliedEvent appliedEvent = new BuffEvents.BuffAppliedEvent(player, buffData);
+            NeoForge.EVENT_BUS.post(appliedEvent);
+
+            if (ConfigManager.modConfig().notifications.showBuffApplied) {
+                String msg = "+" + formatHeartLabel(modifiedHealth) + ", " + BuffNames.pretty(secondaryBuffId);
+                player.displayClientMessage(Component.literal("\u00a76" + msg), true);
+            }
         }
 
         if (entry.buffs.contains("saturation_boost")) {

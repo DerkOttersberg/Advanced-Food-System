@@ -6,8 +6,11 @@ import com.derko.advancedfoodsystem.data.BuffInstance;
 import com.derko.advancedfoodsystem.data.BuffMath;
 import com.derko.advancedfoodsystem.data.BuffStorage;
 import com.derko.advancedfoodsystem.network.NetworkHandler;
+import com.derko.seamlessapi.api.BuffData;
+import com.derko.seamlessapi.api.BuffEvents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,8 +36,25 @@ public final class BuffTicker {
             buff.decrement();
             if (buff.timeTicks() > 0) {
                 keep.add(buff);
-            } else if (ConfigManager.modConfig().notifications.showBuffExpired) {
-                player.displayClientMessage(Component.literal("\u00a77-" + BuffNames.pretty(buff.id())), true);
+            } else {
+                // === Fire removal event ===
+                BuffData buffData = new BuffData(
+                        buff.id(),
+                        0,
+                        buff.totalTicks(),
+                        buff.magnitude(),
+                        buff.healthBonusHearts(),
+                        buff.source(),
+                        buff.created()
+                );
+                BuffEvents.BuffRemovedEvent removedEvent = new BuffEvents.BuffRemovedEvent(
+                        player, buffData, BuffEvents.BuffRemovedEvent.RemovalReason.EXPIRED
+                );
+                NeoForge.EVENT_BUS.post(removedEvent);
+
+                if (ConfigManager.modConfig().notifications.showBuffExpired) {
+                    player.displayClientMessage(Component.literal("\u00a77-" + BuffNames.pretty(buff.id())), true);
+                }
             }
         }
 
