@@ -1,0 +1,300 @@
+================================================================================
+                   ADVANCED FOOD SYSTEM MOD - DELIVERY
+================================================================================
+
+📦 WHAT YOU'RE GETTING:
+
+Single Folder: Advanced_Food_System_Mod/
+├── README.md (Overview & Guide)
+├── 01_SYSTEM_REQUIREMENTS.md (15,000+ words)
+├── 02_UI_UX_SPECIFICATION.md (8,000+ words)
+└── 03_CONFIGURATION_GUIDE.md (7,000+ words)
+
+TOTAL: 30,000+ words of pure requirements and specifications
+NO code examples, NO success metrics, NO phases/roadmap
+
+================================================================================
+                              DOCUMENT BREAKDOWN
+================================================================================
+
+01_SYSTEM_REQUIREMENTS.md
+─────────────────────────
+WHAT: Complete system specification
+COVERS:
+  • Core system overview (what it does)
+  • Health system (7 hearts, +4 with saturation)
+  • Buff system (custom effects, no potion effects)
+  • Buff effects (mining speed, walk speed, jump, etc.)
+  • Food system (how foods grant buffs)
+  • Buff combinations (multiple foods = bonus)
+  • Data storage (NBT persistence)
+  • Configuration system (JSON)
+  • Technical requirements
+  • Edge cases & solutions
+WHEN: Read first to understand WHAT the mod does
+
+02_UI_UX_SPECIFICATION.md
+──────────────────────────
+WHAT: Complete UI design & behavior specification
+COVERS:
+  • HUD position & layout (bottom-left, 150×20 per slot)
+  • Visual appearance (colors: #333333 background, #FFFFFF text, #00FF00 timer)
+  • Multi-slot display (show 3 buffs max)
+  • Timer formatting (MM:SS)
+  • Notifications (action bar messages)
+  • HUD customization (position, scale, visibility)
+  • Rendering behavior
+  • Player experience flow
+WHEN: Read to understand HOW the UI looks & works
+
+03_CONFIGURATION_GUIDE.md
+──────────────────────────
+WHAT: Complete configuration specifications
+COVERS:
+  • File locations (3 JSON config files)
+  • mod_config.json (system & HUD settings)
+  • food_buffs.json (foods and their buffs)
+  • buff_combinations.json (combo rules)
+  • Default configurations (pre-configured foods/combos)
+  • Adding new foods (step-by-step)
+  • Creating combinations (step-by-step)
+  • Configuration examples
+  • Advanced customization
+WHEN: Read to understand HOW to configure & extend
+
+README.md
+─────────
+WHAT: Quick overview & navigation guide
+COVERS:
+  • Quick summary of mod
+  • Document guide (which to read)
+  • Design decisions explained
+  • Technical approach
+  • Implementation notes
+  • Configuration examples
+  • Testing checklist
+WHEN: Read first to orient yourself
+
+================================================================================
+                           KEY REQUIREMENTS
+================================================================================
+
+CORE MECHANICS:
+✓ Reduce max health to 7 hearts
+✓ Add +4 hearts bonus at full saturation (max 11 hearts)
+✓ Custom buff system (NOT vanilla potion effects)
+✓ 3-slot buff display HUD (bottom-left)
+✓ Buff combinations (eat 2 foods = bonus)
+✓ NBT persistence (buffs survive logout)
+
+BUFF SYSTEM:
+✓ Custom effects applied via stat modifications
+✓ No vanilla potion effect icons
+✓ Additive stacking (multiple same buffs = stronger)
+✓ Max 20 buffs per player
+✓ Duration: 15-90 seconds per food
+✓ 8 buff types: mining_speed, walk_speed, jump_height, etc.
+
+HUD DISPLAY:
+✓ Position: Bottom-left (configurable)
+✓ Size: 150×20 pixels per slot
+✓ Shows: Icon, name, time (MM:SS), progress bar
+✓ Colors: Dark gray background, white text, green timer
+✓ Max 3 slots visible (older buffs shown first)
+✓ Updates every frame
+
+CONFIGURATION:
+✓ 3 JSON files (mod_config, food_buffs, buff_combinations)
+✓ Auto-generate defaults if missing
+✓ Unlimited foods/buffs/combinations
+✓ Reloadable without restart
+✓ Fully customizable values
+
+================================================================================
+                        DESIGN HIGHLIGHTS
+================================================================================
+
+WHY NO VANILLA POTION EFFECTS?
+• Complete control over effect system
+• Flexible (can create any effect imaginable)
+• Clean UI (no vanilla potion effect icons)
+• Easier combinations (fully trackable)
+
+WHY CUSTOM BUFF SYSTEM?
+• Apply effects via stat modifications
+• Track in NBT (standard Minecraft save format)
+• Client reads from synced NBT
+• Render custom HUD instead of vanilla icons
+
+WHY 3-SLOT HUD?
+• Not overwhelming (information balance)
+• Fits in corner (doesn't block vision)
+• Auto-manages overflow (oldest first)
+• Readable (large text, good contrast)
+
+INTEGRATION APPROACH:
+• Single event: Player eats food
+• Two systems trigger: Vanilla hunger + custom buff
+• They work together (not separate)
+• Players understand instantly
+
+================================================================================
+                          FILE ORGANIZATION
+================================================================================
+
+Advanced_Food_System_Mod/
+│
+├── README.md
+│   └─ Quick overview & navigation
+│
+├── 01_SYSTEM_REQUIREMENTS.md
+│   ├─ System Overview
+│   ├─ Component Details
+│   │  ├─ Health System
+│   │  ├─ Buff System
+│   │  ├─ Custom Effects
+│   │  ├─ Food System
+│   │  └─ Combinations
+│   ├─ Data Storage
+│   ├─ Configuration
+│   ├─ Technical Requirements
+│   ├─ Expansions
+│   └─ Edge Cases
+│
+├── 02_UI_UX_SPECIFICATION.md
+│   ├─ HUD Position & Layout
+│   ├─ Visual Appearance
+│   ├─ Multi-Slot Layout
+│   ├─ Timer Formatting
+│   ├─ Notifications
+│   ├─ Customization Options
+│   ├─ Rendering Behavior
+│   └─ Player Experience Flow
+│
+└── 03_CONFIGURATION_GUIDE.md
+    ├─ File Locations
+    ├─ mod_config.json
+    │  ├─ System Settings
+    │  ├─ HUD Settings
+    │  └─ Notification Settings
+    ├─ food_buffs.json
+    │  ├─ Entry Structure
+    │  ├─ Default Foods
+    │  ├─ Adding New Foods
+    │  └─ Buff Types
+    ├─ buff_combinations.json
+    │  ├─ Entry Structure
+    │  ├─ Default Combinations
+    │  ├─ Creating New Combos
+    │  └─ 3+ Buff Combos
+    ├─ Reload Command
+    ├─ Validation & Error Handling
+    ├─ Examples
+    └─ Advanced Customization
+
+================================================================================
+                        WHAT YOU CAN DO NOW
+================================================================================
+
+With these specifications, you can:
+
+✓ Understand exactly what needs to be built
+✓ See how everything should work
+✓ Know how the UI should look
+✓ Know how to configure it
+✓ Customize every aspect
+✓ Add new foods/buffs/combinations
+✓ Design your implementation approach
+✓ Know technical requirements
+✓ Prepare for edge cases
+
+WITHOUT:
+✗ Code examples (clean requirements only, as requested)
+✗ Phases/roadmap (just the requirements)
+✗ Success metrics (not needed for requirements)
+
+================================================================================
+                          QUICK REFERENCE
+================================================================================
+
+For implementation questions:
+├─ "What is this mod?" → README.md or 01_SYSTEM_REQUIREMENTS.md
+├─ "How does health work?" → 01_SYSTEM_REQUIREMENTS.md (Health System)
+├─ "How do buffs work?" → 01_SYSTEM_REQUIREMENTS.md (Buff System)
+├─ "What are custom effects?" → 01_SYSTEM_REQUIREMENTS.md (Buff Effects)
+├─ "How do combinations work?" → 01_SYSTEM_REQUIREMENTS.md (Buff Combos)
+├─ "What does the HUD look like?" → 02_UI_UX_SPECIFICATION.md
+├─ "How should the UI behave?" → 02_UI_UX_SPECIFICATION.md (HUD Behavior)
+├─ "How do I configure this?" → 03_CONFIGURATION_GUIDE.md
+├─ "How do I add new foods?" → 03_CONFIGURATION_GUIDE.md (food_buffs.json)
+├─ "How do I create combos?" → 03_CONFIGURATION_GUIDE.md (buff_combinations.json)
+└─ "What are the colors/sizes?" → 02_UI_UX_SPECIFICATION.md (Visual Appearance)
+
+================================================================================
+                          IMPLEMENTATION HINTS
+================================================================================
+
+Based on the specifications, consider:
+
+1. HEALTH SYSTEM
+   • Modify player.getMaxHealth() on join
+   • Listen to saturation changes
+   • Add/remove bonus health dynamically
+
+2. BUFF STORAGE
+   • Use player.getPersistentData() for NBT
+   • Store as ListTag of CompoundTags
+   • One entry per buff (id, duration, magnitude, source)
+
+3. FOOD EVENT
+   • Hook LivingEntityUseItemEvent
+   • Detect item type via registry name
+   • Look up in food_buffs config
+   • Add buff to player NBT
+
+4. BUFF TICKER
+   • Server tick event (every tick)
+   • Decrement duration for each buff
+   • Remove expired buffs
+   • Apply effects based on buff type
+
+5. HUD RENDERING
+   • Client-side rendering
+   • Read NBT from client player
+   • Position and render slots
+   • Format timer MM:SS
+   • Update every frame
+
+6. COMBINATIONS
+   • Check every 5 ticks (4/second)
+   • Scan player's active buff IDs
+   • Match against combination rules
+   • Apply bonus buff if matched
+
+7. CONFIGURATION
+   • Load JSON files on startup
+   • Parse into Java objects
+   • Validate values (clamp ranges, etc.)
+   • Support reload command
+
+================================================================================
+                            YOU'RE READY
+================================================================================
+
+You now have:
+✓ Complete system specifications
+✓ Detailed UI/UX design
+✓ Full configuration guide
+✓ All edge cases covered
+✓ Implementation hints
+✓ Everything organized in one folder
+
+Next steps:
+1. Read README.md
+2. Understand the 3 documents
+3. Start implementing based on requirements
+4. Build NeoForge mod using these specs
+
+Good luck! 🚀
+
+================================================================================

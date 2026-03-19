@@ -1,0 +1,5 @@
+{
+  "advancedfoodsystem.notification.combo": "COMBO UNLOCKED: %s",
+  "advancedfoodsystem.notification.buff_add": "+%s",
+  "advancedfoodsystem.notification.buff_expire": "-%s"
+}
