@@ -9,6 +9,7 @@ import com.derko.advancedfoodsystem.config.AfsConfig;
 import com.derko.advancedfoodsystem.config.ConfigManager;
 import com.derko.advancedfoodsystem.events.ClientEvents;
 import com.derko.advancedfoodsystem.events.CommonEvents;
+import com.derko.advancedfoodsystem.gameplay.ComboEffectRegistry;
 import com.derko.advancedfoodsystem.network.NetworkHandler;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -56,7 +57,10 @@ public class AdvancedFoodSystemMod {
 
     /** Fires after all mod setup is complete — merge any API-registered foods. */
     private void onLoadComplete(FMLLoadCompleteEvent event) {
-        event.enqueueWork(() -> ConfigManager.mergeApiRegistrations(SatiationAPI.freezeAndGetAll()));
+        event.enqueueWork(() -> {
+            ConfigManager.mergeApiRegistrations(SatiationAPI.freezeAndGetAll());
+            ComboEffectRegistry.mergeApiRegistrations(SatiationAPI.freezeAndGetCombos());
+        });
     }
 
     private void onConfigLoad(ModConfigEvent.Loading event) {

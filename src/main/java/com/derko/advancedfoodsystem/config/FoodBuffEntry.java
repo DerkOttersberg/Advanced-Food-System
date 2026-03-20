@@ -10,5 +10,5 @@ public class FoodBuffEntry {
     public int durationSeconds = 60;
     public double magnitude = 0.1D;
     public double debuffMagnitude = 0.04D;
-    public double healthBonusHearts = 0.5D;
+    public double healthBonusHearts = 1.0D;
 }

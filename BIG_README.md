@@ -1,201 +1,159 @@
-# Advanced Food System - Complete Feature README
+# Advanced Food System - Big README
 
-## Overview
-Advanced Food System is a NeoForge mod for Minecraft 1.21 that turns food into a long-duration build system.
+## Project Idea
+Advanced Food System turns food into a long-term build system instead of a one-time hunger refill.
+Players combine foods to build temporary archetypes (speed, mining, tank, fighter, XP) while balancing upside and downside.
 
-Core philosophy:
-- Food is a loadout, not just hunger refill.
-- Players build around offensive, defensive, mobility, sustain, and utility lanes.
-- Harmful foods are viable high-risk options.
-- The system is multiplayer-safe and server-authoritative.
+Core design goals:
+- Keep vanilla combat readable and server-authoritative.
+- Make food choices meaningful in survival progression.
+- Keep buffs small per item, stronger only when stacked through combos.
+- Keep multiplayer sync reliable with low admin overhead.
 
-## Core Gameplay Model
+Companion project:
+- This mod consumes Seamless-API as a dependency for third-party food and combo registrations.
+- API details are documented in ../Seamless-API/BIG_README.md.
 
-### 1) Food Buff Slots
-- Players can have up to 3 active food sources at once.
-- Buffs are tracked server-side and persisted in player NBT.
-- Duplicate exact source entries are prevented.
-- One food source can carry multiple linked effects (positive plus minimal debuff for harmful foods).
+## Feature Summary
+- Slot-based food buff model with timed expiration.
+- Per-food buff and debuff definitions from JSON config.
+- Dynamic combo detection from active food sources.
+- Capstone combo support and final-heart unlock policy.
+- Health cap scaling from active foods and combo state.
+- Server-authoritative damage pipeline with reduction and frailty penalties.
+- In-game configuration screens for gameplay and effect strength tuning.
+- HUD with active food slots, timers, bars, and combo context.
+- Milk clears active buff state.
+- Multiplayer-safe network sync for client HUD state.
 
-### 2) Health Model
-- Base max hearts are configurable.
-- Food grants per-source heart bonus.
-- Capstone combo logic unlocks the final heart (10-heart path).
-- Health cap is enforced through transient max-health modifiers.
+## Gameplay Model
+### 1) Food -> Buff Instances
+When food is consumed, configured buff entries create BuffInstance records with:
+- id (buff/debuff id)
+- remaining ticks and total ticks
+- magnitude
+- health bonus hearts
+- source key
 
-### 3) Duration Model
-- Default matrix uses 1200 seconds (20 minutes) for food effects.
-- Harmful-food debuffs are also 1200 seconds (20 minutes), minimal magnitude.
-- Duration and strength are further tunable with global and per-effect multipliers.
+### 2) Tick Lifecycle
+Each server tick:
+- Buff durations decrement.
+- Expired entries are removed and events are posted.
+- Active combo set is recomputed.
+- Aggregated magnitudes are applied to attributes/effects.
+- Buff state is synced to clients.
 
-## Full Food Matrix
-- Implemented in defaults and documented in:
-  - FOOD_MATRIX_README.md
-- Includes all 40 edible foods in target scope.
-- Soups/stews are enforced as +1 heart only and neutral for combo tags.
+### 3) Health Rules
+- Base max hearts and max-with-food are configurable.
+- Food bonuses are source-based and merged per source.
+- A selected capstone can unlock the final extra heart.
+- Current balancing uses +1 heart per food source.
 
-## Effect Lanes and Tags
+### 4) Damage Rules
+Incoming damage is transformed with:
+- damage_reduction (downward multiplier, capped)
+- frailty (upward multiplier, capped)
 
-### Lane Tags
-- O = Offense
-- D = Defense
-- S = Sustain
-- M = Mobility
-- U = Utility
-- R = Risk
-- N = Neutral
+So powerful builds can still be risky when frailty is present.
 
-### Implemented Effect IDs
-Positive:
-- mining_speed
-- walk_speed
-- attack_speed
-- attack_damage
-- damage_reduction
-- regeneration
-- hunger_efficiency
-- saturation_boost
-- knockback_resistance
-- xp_gain
-- heart_bonus (neutral marker for soups/stews)
+## Combo Catalog
+All combo definitions live in gameplay/ComboEffectRegistry.java.
 
-Minimal long debuffs:
-- frailty
-- fatigue
-- queasy
-- appetite_leak
+### Speed Path
+- combo_speed_stride (pair): beetroot + potato
+- combo_speed_current (pair): beetroot + salmon
+- combo_speedster_raw (capstone): beetroot + salmon + potato
+- combo_speedster_cooked (capstone): beetroot + cooked_salmon + baked_potato
 
-## Combo System
+### Mining Path
+- combo_miner_focus (pair): dried_kelp + cookie
+- combo_miner_study (pair): glow_berries + cookie
+- combo_quarry_engine (capstone): dried_kelp + glow_berries + cookie
 
-### Pair Intersections
-- Intersections are computed from active lane tags.
-- Multiple pair combos can be active simultaneously.
-- Implemented pair combos include:
-  - Predator, Bastion, Renewal, Windstep, Scholar
-  - Vanguard, Reaver, Duelist, Hunter
-  - Warden, Sentinel, Bulwark Sage
-  - Ranger, Steward, Nomad
-  - Bloodrush, Last Stand, Dark Renewal, Frenzy Step, Gambler, Cursed Chain
+### Tank Path
+- combo_guarded_plate (pair): cooked_porkchop + cooked_mutton
+- combo_guarded_blessing (pair): golden_apple + cooked_mutton
+- combo_bulwark_core (capstone): cooked_porkchop + cooked_mutton + golden_apple
 
-### Triple Capstones
-- Triple lane intersections activate capstone combos.
-- Implemented capstones include:
-  - Bruiser Prime, Skirmish Tank, War Scholar
-  - Blood Dancer, Reaping Sage, Raider
-  - Juggernaut, Iron Sustainer, Expedition Guard, Endless Nomad
+### Fighting Path
+- combo_duelist_line (pair): cooked_chicken + cooked_rabbit
+- combo_duelist_heart (pair): apple + cooked_chicken
+- combo_skirmisher (capstone): cooked_chicken + cooked_rabbit + apple
 
-### Risk Tax
-- If an R-tag food is part of the active build, capstone combo magnitude is reduced to 90%.
-- Harmful-food debuffs remain active while risk combos are active.
+### XP Path
+- combo_scholar_path (pair): cod + beetroot
+- combo_scholar_path_cooked (pair): cooked_cod + beetroot
+- combo_archivist (capstone): cod + cooked_cod + glow_berries
 
-## Harmful Food Design
-- Harmful foods receive meaningful positive effects for build viability.
-- They also apply minimal persistent debuffs for 20 minutes.
-- This creates intentional high-risk archetypes without dominance.
+### Balanced Path
+- combo_balanced_trail (pair): carrot + melon_slice
+- combo_balanced_hearth (pair): bread + pumpkin_pie
+- combo_balanced_tide (pair): tropical_fish + sweet_berries
+- combo_balanced_harmony (capstone): apple + bread + carrot
 
-## Hunger Efficiency Debug
+Final-heart unlock is intentionally selective (not every capstone grants it).
 
-### Admin Command
-- /advfood debughunger on
-- /advfood debughunger off
+## Code Architecture (Class Guide)
 
-### Behavior
-When enabled, once per second action-bar debug output shows:
-- food level
-- saturation
-- hunger efficiency total
-- appetite leak total
-- net hunger efficiency
+### Entry and Wiring
+- AdvancedFoodSystemMod: mod bootstrap, event registration, config lifecycle, API merge hook.
 
-Use this to tune balance in survival and multiplayer testing sessions.
+### Config Layer
+- config/AfsConfig: common gameplay config spec.
+- config/AfsClientConfig: client/HUD config spec.
+- config/ConfigManager: JSON load/create/sanitize, defaults, migration, API food merge, effect strengths.
+- config/ModConfigData: runtime config model.
+- config/FoodBuffEntry: per-food config schema.
+- config/ComboEntry: legacy/static combo config schema placeholder.
 
-## Networking and Multiplayer
-- Buff state is server-authoritative.
-- Active buff state is synced to clients with packet payloads.
-- NBT persistence survives logout/login.
-- Clone/death events clear and broadcast removal lifecycles.
-- Continuous effects and attributes are recomputed server-side every tick.
+### Data Layer
+- data/BuffInstance: active buff record + NBT serialization.
+- data/BuffStorage: per-player buff persistence and slot operations.
+- data/BuffMath: aggregate helpers for buff totals.
 
-## API Integration (Seamless-API)
-The mod integrates with Seamless-API for external mod compatibility.
+### Gameplay Layer
+- gameplay/BuffTicker: core tick loop, expiration, combo trigger, continuous effects, health scaling.
+- gameplay/ComboEffectRegistry: built-in combo requirements/effects + API combo merge.
+- gameplay/AttributeController: max-health and attribute modifier application.
+- gameplay/BuffNames: display names/icons for HUD and tooltips.
 
-Implemented integration points:
-- SatiationAPI registration merge into local food map
-- BuffApplyingEvent pre-application hook
-- BuffAppliedEvent post-application hook
-- BuffRemovedEvent expiry/death notifications
-- BuffModifiers magnitude/health/filter hooks
+### Event Layer
+- events/CommonEvents: food consume pipeline, buff apply/remove hooks, tooltip injection, damage transform, milk clear.
+- events/ClientEvents: client-side camera suppression for silent health-cap changes.
 
-This allows third-party mods to register foods and influence calculations safely.
+### Client UI Layer
+- client/AfsConfigScreen: in-game config root screen.
+- client/AfsEffectStrengthScreen: paged effect-strength tuning screen.
+- client/BuffHudRenderer: slot HUD rendering, timers, combo icon, hover logic.
+- client/ClientBuffState: client sync state cache and suppression timers.
+- client/ComboTooltipData: tooltip DTO for combo display.
 
-## Config System
+### Commands and Networking
+- commands/AdvFoodCommand: admin/debug command surface.
+- network/NetworkHandler: payload registration and sync utilities.
+- network/BuffSyncPayload: server->client buff sync payload.
 
-### Files
-- config/advancedfoodsystem/food_buffs.json
-- config/advancedfoodsystem/buff_combinations.json
-- config/advancedfoodsystem/effect_strengths.json
-
-### Runtime behavior
-- Files auto-generate if missing.
-- Values are sanitized/clamped.
-- Effect strength multipliers are discoverable and editable.
-- Reload command applies updated config state.
-
-## UI and UX
-- In-game config screen for core settings and HUD options.
-- Effect strengths screen with page controls.
-- Tooltip rendering shows:
-  - heart bonus
-  - positive effects and effective strengths
-  - debuffs and effective strengths
-  - duration
-
-## Commands
-- /advfood reload
-- /advfood debughunger on
-- /advfood debughunger off
-
-## Implementation Notes
-
-### Slot counting
-- Slot cap uses distinct base food sources.
-- Source suffixes are used internally for linked effects (positive/debuff instances from one food).
-
-### Combo contribution model
-- Combo buffs are synthetic entries (combo_*).
-- Combo effects are expanded through ComboEffectRegistry into real effect channels.
-
-### Damage pipeline
-- damage_reduction is capped and applied.
-- frailty increases incoming damage (capped) and stacks with reduction math.
+## Multiplayer and Persistence
+- Buff state persists via player persistent data.
+- Server is the single source of truth.
+- Client HUD reflects synchronized payload data only.
+- Death and milk clear paths post removal events and resync.
 
 ## Build and Run
+From Advanced-Food-System root:
+- Windows: gradlew.bat clean build
 
-### Build
-- gradlew.bat build
+If developing with local API changes:
+1) Build/publish Seamless-API first.
+2) Build Advanced-Food-System against mavenLocal artifact.
 
-### Notes
-- This README reflects current implemented feature set.
-- No GitHub push is required or performed for local implementation.
+## Extension Story
+- Third-party mods register foods (and now combos) through Seamless-API.
+- This mod merges API registrations after load-complete.
+- Existing built-in combos are not overridden by external combos.
 
-## File Index (Key Implementation Files)
-- src/main/java/com/derko/advancedfoodsystem/config/ConfigManager.java
-- src/main/java/com/derko/advancedfoodsystem/config/FoodBuffEntry.java
-- src/main/java/com/derko/advancedfoodsystem/events/CommonEvents.java
-- src/main/java/com/derko/advancedfoodsystem/data/BuffStorage.java
-- src/main/java/com/derko/advancedfoodsystem/data/BuffMath.java
-- src/main/java/com/derko/advancedfoodsystem/gameplay/BuffTicker.java
-- src/main/java/com/derko/advancedfoodsystem/gameplay/AttributeController.java
-- src/main/java/com/derko/advancedfoodsystem/gameplay/BuffNames.java
-- src/main/java/com/derko/advancedfoodsystem/gameplay/ComboEffectRegistry.java
-- src/main/java/com/derko/advancedfoodsystem/commands/AdvFoodCommand.java
-
-## Summary
-Advanced Food System now includes:
-- complete 40-food matrix baseline
-- persistent minimal long debuffs for harmful foods
-- all pair/triple intersection combo architecture
-- risk-tax capstone balancing
-- hunger-efficiency debug mode
-- multiplayer-safe server-authoritative processing
-- comprehensive matrix and feature documentation
+## Notes for Contributors
+- Keep changes server-authoritative first, then sync to client.
+- Prefer small buff numbers and explicit drawbacks for capstones.
+- Add new buff ids to display naming/icon maps and effect strength defaults.
+- Preserve compatibility with existing JSON configs where possible.

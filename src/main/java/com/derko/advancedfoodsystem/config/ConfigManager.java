@@ -168,7 +168,8 @@ public final class ConfigManager {
             entry.buffs = new ArrayList<>(reg.buffs());
             entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
             entry.magnitude = clamp(reg.magnitude(), 0.01D, 5.0D);
-            entry.healthBonusHearts = clamp(reg.healthBonusHearts(), 0.0D, 6.0D);
+            // Global rule: every food source grants +1 heart.
+            entry.healthBonusHearts = 1.0D;
             foodBuffs.put(e.getKey(), entry);
         }
     }
@@ -217,7 +218,8 @@ public final class ConfigManager {
             entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
             entry.magnitude = clamp(entry.magnitude, 0.01D, 5.0D);
             entry.debuffMagnitude = clamp(entry.debuffMagnitude, 0.0D, 1.0D);
-            entry.healthBonusHearts = clamp(entry.healthBonusHearts, 0.0D, 6.0D);
+            // Global rule: every food source grants +1 heart.
+            entry.healthBonusHearts = 1.0D;
             if (entry.buffs == null) {
                 entry.buffs = List.of();
             } else {
@@ -426,7 +428,8 @@ public final class ConfigManager {
         entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
         entry.magnitude = clamp(magnitude, 0.01D, 5.0D);
         entry.debuffMagnitude = clamp(debuffMagnitude, 0.0D, 1.0D);
-        entry.healthBonusHearts = clamp(hearts, 0.0D, 6.0D);
+        // Global rule: every food source grants +1 heart.
+        entry.healthBonusHearts = 1.0D;
     }
 
     private static <T> T readJson(Path path, Class<T> clazz, T fallback) {
