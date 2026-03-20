@@ -15,6 +15,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,13 +37,13 @@ import java.util.stream.Collectors;
  */
 public final class BuffHudRenderer {
 
-    // Slot metrics
-    private static final int SLOT_W  = 80;
-    private static final int SLOT_H  = 26;
+    // Slot metrics tuned for compact timer-only layout.
+    private static final int SLOT_W  = 52;
+    private static final int SLOT_H  = 20;
     private static final int SLOT_GAP = 2;
-    private static final int ICON_X_OFF = 2;   // icon left edge relative to slot
-    private static final int ICON_Y_OFF = 5;   // icon top edge relative to slot (16px icon centred in 26px)
-    private static final int TEXT_X = 21;       // text left edge
+    private static final int ICON_X_OFF = 2;
+    private static final int ICON_Y_OFF = 3;
+    private static final int TEXT_X = 17;
 
     // Colours
     private static final int COL_BG        = 0xCC1A1A1A;
@@ -123,21 +124,15 @@ public final class BuffHudRenderer {
         x = clamp(x, 2, Math.max(2, screenW - SLOT_W - 2));
         y = clamp(y, 16, Math.max(16, screenH - stackHeight - 2));
 
+        ComboTooltipData comboData = comboActive ? buildComboTooltipData(all) : null;
+
         // --- Heart summary row (above slots) ---
-        drawHeartSummary(gfx, font, x, y - 14, all);
+        drawHeartSummary(gfx, font, x, y - 14, all, comboData, screenW, screenH);
 
         // --- Food buff slots ---
         for (int i = 0; i < show.size(); i++) {
             int sy = y + i * (SLOT_H + SLOT_GAP);
             drawSlot(gfx, font, show.get(i), x, sy, screenW, screenH);
-        }
-
-        // --- Combo badge ---
-        if (comboActive) {
-            ComboTooltipData comboData = buildComboTooltipData(all);
-            int badgeX = x - 14;
-            int badgeY = y;
-            drawComboBadge(gfx, font, badgeX, badgeY, comboData, screenW, screenH);
         }
 
         gfx.pose().popPose();
@@ -147,19 +142,30 @@ public final class BuffHudRenderer {
     // Heart summary
     // -------------------------------------------------------------------------
 
-    private static void drawHeartSummary(GuiGraphics gfx, Font font, int x, int y, List<BuffInstance> all) {
+    private static void drawHeartSummary(GuiGraphics gfx, Font font, int x, int y, List<BuffInstance> all,
+                                         ComboTooltipData comboData, int screenW, int screenH) {
         double baseHearts = ConfigManager.modConfig().system.maxHearts;
         double maxHearts  = ConfigManager.modConfig().system.maxHeartsWithFood;
 
-        double slotHearts = all.stream().filter(b -> !isCombo(b))
-                .mapToDouble(BuffInstance::healthBonusHearts).sum();
-        boolean comboActive = all.stream().anyMatch(BuffHudRenderer::isCombo);
+        Map<String, Double> sourceHeartMap = new HashMap<>();
+        for (BuffInstance buff : all) {
+            if (!isCombo(buff)) {
+                sourceHeartMap.merge(baseSource(buff.source()), buff.healthBonusHearts(), Math::max);
+            }
+        }
 
-        double effectiveHearts = comboActive
-                ? maxHearts
-                : Math.min(maxHearts - 1.0D, baseHearts + slotHearts);
+        double slotHearts = sourceHeartMap.values().stream().mapToDouble(Double::doubleValue).sum();
+        boolean wholeHeartScaling = ConfigManager.modConfig().system.wholeHeartHealthScaling;
+        double appliedSlotHearts = wholeHeartScaling ? Math.floor(slotHearts) : slotHearts;
+
+        boolean capstoneComboActive = all.stream().anyMatch(
+            buff -> isCombo(buff) && ComboEffectRegistry.grantsFinalHeart(buff.id())
+        );
+
+        double effectiveHearts = Math.min(maxHearts, baseHearts + appliedSlotHearts + (capstoneComboActive ? 1.0D : 0.0D));
         double extraHearts = Math.max(0.0D, effectiveHearts - baseHearts);
-        int maxBonus = (int) Math.round(maxHearts - baseHearts); // = 4
+        int reachableBonus = ConfigManager.modConfig().system.maxActiveBuffs + 1;
+        int maxBonus = (int) Math.round(Math.min(maxHearts - baseHearts, reachableBonus));
 
         // Build heart string: filled â™¥ for active bonus, hollow â™¡ for remaining potential
         int filled = (int) Math.ceil(extraHearts);
@@ -187,6 +193,12 @@ public final class BuffHudRenderer {
             gfx.drawString(font, ch, cx, y + 1, colour, false);
             cx += font.width(ch);
         }
+
+        if (comboData != null && comboData.primary() != null) {
+            int badgeX = Math.max(2, lx - 14);
+            int badgeY = y - 1;
+            drawComboBadge(gfx, font, badgeX, badgeY, comboData, screenW, screenH);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -205,28 +217,25 @@ public final class BuffHudRenderer {
         // Food icon
         drawFoodIcon(gfx, buff.source(), x + ICON_X_OFF, y + ICON_Y_OFF);
 
-        String buffName = BuffNames.pretty(buff.id());
-        String shortName = buffName.length() > 12 ? buffName.substring(0, 12) : buffName;
-        gfx.drawString(font, shortName, x + TEXT_X, y + 4, 0xFFFFFFFF, false);
-
-        // Time text (above bar)
+        // Time text
         String time = formatShortTime(buff.timeTicks());
-        int timeX = x + SLOT_W - 4 - font.width(time);
-        gfx.drawString(font, time, timeX, y + 14, COL_TIME, false);
+        int timeX = x + TEXT_X;
+        int timeY = y + 4;
+        gfx.drawString(font, time, timeX, timeY, COL_TIME, false);
 
         // Progress bar
-        int barX = x + TEXT_X;
-        int barY = y + SLOT_H - 7;
-        int barW = SLOT_W - TEXT_X - 4;
+        int barX = timeX;
+        int barY = y + 14;
+        int barW = Math.max(8, font.width(time));
         double frac = buff.totalTicks() > 0
                 ? Math.max(0.0, buff.timeTicks() / (double) buff.totalTicks())
                 : 0.0;
         int filled = (int) Math.round(frac * barW);
         int barColour = frac > 0.25 ? COL_BAR_FG : (frac > 0.10 ? COL_BAR_WARN : COL_BAR_CRIT);
 
-        gfx.fill(barX, barY, barX + barW, barY + 3, COL_BAR_BG);
+        gfx.fill(barX, barY, barX + barW, barY + 2, COL_BAR_BG);
         if (filled > 0) {
-            gfx.fill(barX, barY, barX + filled, barY + 3, barColour);
+            gfx.fill(barX, barY, barX + filled, barY + 2, barColour);
         }
 
         // Hover tooltip â€” must be in HUD-scaled mouse space
@@ -294,9 +303,14 @@ public final class BuffHudRenderer {
         BuffInstance comboBuff = comboData.primary();
         String title = "\u2605 " + BuffNames.pretty(comboBuff.id());
         String effectLine = formatComboEffects(comboBuff.id(), comboBuff.magnitude());
-        String typeLine = ComboEffectRegistry.isCapstone(comboBuff.id())
-                ? "Capstone combo active (+final heart unlock)"
-                : "Pair combo active";
+        String typeLine;
+        if (ComboEffectRegistry.isCapstone(comboBuff.id())) {
+            typeLine = ComboEffectRegistry.grantsFinalHeart(comboBuff.id())
+                    ? "Capstone combo active (+final heart unlock)"
+                    : "Capstone combo active";
+        } else {
+            typeLine = "Pair combo active";
+        }
         String reqLine = "Needs: " + ComboEffectRegistry.requiredFoods(comboBuff.id()).stream()
             .map(BuffHudRenderer::friendlyId)
             .sorted()
@@ -361,7 +375,11 @@ public final class BuffHudRenderer {
             ResourceLocation id = ResourceLocation.parse(baseSource(source));
             Item item = BuiltInRegistries.ITEM.get(id);
             if (item != null && item != BuiltInRegistries.ITEM.get(ResourceLocation.withDefaultNamespace("air"))) {
-                gfx.renderItem(new ItemStack(item), x, y);
+                gfx.pose().pushPose();
+                gfx.pose().translate(x, y, 0.0F);
+                gfx.pose().scale(0.82F, 0.82F, 1.0F);
+                gfx.renderItem(new ItemStack(item), 0, 0);
+                gfx.pose().popPose();
                 return;
             }
         } catch (Exception ignored) {}
@@ -378,8 +396,7 @@ public final class BuffHudRenderer {
         int sec = Math.max(0, ticks / 20);
         int min = sec / 60;
         int rem = sec % 60;
-        if (min >= 2) return min + "m";
-        if (min == 1) return rem == 0 ? "1m" : "1m " + rem + "s";
+        if (min > 0) return String.format("%d:%02d", min, rem);
         return rem + "s";
     }
 

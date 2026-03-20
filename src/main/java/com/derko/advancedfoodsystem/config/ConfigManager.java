@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 
 public final class ConfigManager {
+    private static final int STANDARD_FOOD_DURATION_SECONDS = 1200;
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
 
     private static final Type FOOD_MAP_TYPE = new TypeToken<Map<String, FoodBuffEntry>>() {}.getType();
@@ -164,7 +166,7 @@ public final class ConfigManager {
             FoodBuffRegistration reg = e.getValue();
             FoodBuffEntry entry = new FoodBuffEntry();
             entry.buffs = new ArrayList<>(reg.buffs());
-            entry.durationSeconds = clamp(reg.durationSeconds(), 15, 7200);
+            entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
             entry.magnitude = clamp(reg.magnitude(), 0.01D, 5.0D);
             entry.healthBonusHearts = clamp(reg.healthBonusHearts(), 0.0D, 6.0D);
             foodBuffs.put(e.getKey(), entry);
@@ -212,7 +214,7 @@ public final class ConfigManager {
         modConfig.hud.renderFrequency = clamp(modConfig.hud.renderFrequency, 1, 10);
 
         for (FoodBuffEntry entry : foodBuffs.values()) {
-            entry.durationSeconds = clamp(entry.durationSeconds, 15, 7200);
+            entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
             entry.magnitude = clamp(entry.magnitude, 0.01D, 5.0D);
             entry.debuffMagnitude = clamp(entry.debuffMagnitude, 0.0D, 1.0D);
             entry.healthBonusHearts = clamp(entry.healthBonusHearts, 0.0D, 6.0D);
@@ -238,6 +240,38 @@ public final class ConfigManager {
                 entry.healthBonusHearts = 1.0D;
             }
         }
+
+        // Cake is excluded from the system.
+        foodBuffs.remove("minecraft:cake");
+
+        // Build-path rebalance: tiny baseline buffs, stronger outcomes only from stacking + capstones.
+        rebalanceFoodEntry("minecraft:beetroot", List.of("walk_speed"), List.of(), List.of("M"), 0.05D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:potato", List.of("walk_speed"), List.of(), List.of("M"), 0.05D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:salmon", List.of("hunger_efficiency"), List.of(), List.of("U"), 0.05D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:cooked_salmon", List.of("hunger_efficiency"), List.of(), List.of("U"), 0.06D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:baked_potato", List.of("walk_speed", "hunger_efficiency"), List.of(), List.of("M", "U"), 0.04D, 0.02D, 0.5D);
+
+        rebalanceFoodEntry("minecraft:dried_kelp", List.of("mining_speed", "hunger_efficiency"), List.of(), List.of("U"), 0.05D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:cookie", List.of("mining_speed", "xp_gain"), List.of(), List.of("U"), 0.05D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:glow_berries", List.of("mining_speed", "xp_gain"), List.of(), List.of("U"), 0.05D, 0.02D, 0.5D);
+
+        rebalanceFoodEntry("minecraft:cooked_porkchop", List.of("damage_reduction"), List.of(), List.of("D"), 0.04D, 0.02D, 1.0D);
+        rebalanceFoodEntry("minecraft:cooked_mutton", List.of("damage_reduction"), List.of(), List.of("D"), 0.04D, 0.02D, 1.0D);
+        rebalanceFoodEntry("minecraft:golden_apple", List.of("regeneration", "damage_reduction"), List.of(), List.of("S", "D"), 0.04D, 0.02D, 1.0D);
+
+        rebalanceFoodEntry("minecraft:cooked_chicken", List.of("attack_speed"), List.of(), List.of("O"), 0.04D, 0.02D, 0.75D);
+        rebalanceFoodEntry("minecraft:cooked_rabbit", List.of("attack_speed", "regeneration"), List.of(), List.of("O", "S"), 0.03D, 0.02D, 0.75D);
+        rebalanceFoodEntry("minecraft:apple", List.of("regeneration"), List.of(), List.of("S"), 0.03D, 0.02D, 0.75D);
+
+        rebalanceFoodEntry("minecraft:cod", List.of("xp_gain"), List.of(), List.of("U"), 0.04D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:cooked_cod", List.of("xp_gain", "hunger_efficiency"), List.of(), List.of("U"), 0.04D, 0.02D, 0.5D);
+
+        rebalanceFoodEntry("minecraft:carrot", List.of("walk_speed"), List.of(), List.of("M"), 0.03D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:melon_slice", List.of("knockback_resistance", "hunger_efficiency"), List.of(), List.of("D", "U"), 0.03D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:bread", List.of("hunger_efficiency"), List.of(), List.of("U"), 0.03D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:pumpkin_pie", List.of("regeneration", "hunger_efficiency"), List.of(), List.of("S", "U"), 0.03D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:tropical_fish", List.of("walk_speed", "xp_gain"), List.of(), List.of("M", "U"), 0.03D, 0.02D, 0.5D);
+        rebalanceFoodEntry("minecraft:sweet_berries", List.of("walk_speed", "regeneration"), List.of(), List.of("M", "S"), 0.03D, 0.02D, 0.5D);
 
         // Migration: switch bread from old saturation_boost identity to hunger_efficiency.
         FoodBuffEntry bread = foodBuffs.get("minecraft:bread");
@@ -330,7 +364,6 @@ public final class ConfigManager {
         map.put("minecraft:suspicious_stew", food(List.of("heart_bonus"), List.of(), List.of("N"), 1200, 0.01, 0.04, 1.0));
         map.put("minecraft:sweet_berries", food(List.of("walk_speed", "xp_gain"), List.of(), List.of("M", "U"), 1200, 0.06, 0.04, 1.0));
         map.put("minecraft:glow_berries", food(List.of("xp_gain", "mining_speed"), List.of(), List.of("U"), 1200, 0.08, 0.04, 1.0));
-        map.put("minecraft:cake", food(List.of("saturation_boost", "hunger_efficiency"), List.of(), List.of("U", "S"), 1200, 0.08, 0.04, 1.0));
         return map;
     }
 
@@ -378,6 +411,22 @@ public final class ConfigManager {
         entry.durationSeconds = durationSeconds;
         entry.magnitude = magnitude;
         return entry;
+    }
+
+    private static void rebalanceFoodEntry(String foodId, List<String> buffs, List<String> debuffs, List<String> tags,
+                                           double magnitude, double debuffMagnitude, double hearts) {
+        FoodBuffEntry entry = foodBuffs.get(foodId);
+        if (entry == null) {
+            return;
+        }
+
+        entry.buffs = new ArrayList<>(buffs);
+        entry.debuffs = new ArrayList<>(debuffs);
+        entry.tags = new ArrayList<>(tags);
+        entry.durationSeconds = STANDARD_FOOD_DURATION_SECONDS;
+        entry.magnitude = clamp(magnitude, 0.01D, 5.0D);
+        entry.debuffMagnitude = clamp(debuffMagnitude, 0.0D, 1.0D);
+        entry.healthBonusHearts = clamp(hearts, 0.0D, 6.0D);
     }
 
     private static <T> T readJson(Path path, Class<T> clazz, T fallback) {

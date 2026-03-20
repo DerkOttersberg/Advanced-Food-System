@@ -28,6 +28,7 @@ public final class AfsEffectStrengthScreen extends Screen {
 
     @Override
     protected void init() {
+        clearWidgets();
         multiplierBoxes.clear();
 
         int centerX = this.width / 2;
@@ -62,7 +63,7 @@ public final class AfsEffectStrengthScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Prev"), b -> {
                     if (page > 0) {
                         page--;
-                        init();
+                        rebuildWidgets();
                     }
                 })
                 .bounds(centerX - 154, navY, 74, 20)
@@ -77,7 +78,7 @@ public final class AfsEffectStrengthScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Next"), b -> {
                     if (page < totalPages - 1) {
                         page++;
-                        init();
+                        rebuildWidgets();
                     }
                 })
                 .bounds(centerX + 80, navY, 74, 20)

@@ -40,4 +40,8 @@ public final class NetworkHandler {
         }
         PacketDistributor.sendToPlayer(player, new BuffSyncPayload(buffs));
     }
+
+    public static void syncBuffsNow(ServerPlayer player, List<BuffInstance> buffs) {
+        PacketDistributor.sendToPlayer(player, new BuffSyncPayload(buffs));
+    }
 }

@@ -8,6 +8,8 @@ import com.derko.advancedfoodsystem.data.BuffMath;
 import com.derko.advancedfoodsystem.data.BuffStorage;
 import com.derko.advancedfoodsystem.gameplay.BuffNames;
 import com.derko.advancedfoodsystem.gameplay.BuffTicker;
+import com.derko.advancedfoodsystem.gameplay.AttributeController;
+import com.derko.advancedfoodsystem.network.NetworkHandler;
 import com.derko.seamlessapi.api.BuffData;
 import com.derko.seamlessapi.api.BuffEvents;
 import com.derko.seamlessapi.api.BuffModifiers;
@@ -19,6 +21,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent;
@@ -84,6 +87,11 @@ public final class CommonEvents {
         }
 
         ItemStack stack = event.getItem();
+        if (stack.is(Items.MILK_BUCKET)) {
+            clearAllActiveBuffs(player, BuffEvents.BuffRemovedEvent.RemovalReason.FORCED_REMOVAL, true);
+            return;
+        }
+
         FoodProperties properties = stack.getFoodProperties(player);
         if (properties == null || properties.nutrition() <= 0) {
             return;
@@ -98,6 +106,32 @@ public final class CommonEvents {
         }
 
         applyConfiguredFoodBuff(player, key, entry);
+    }
+
+    private static void clearAllActiveBuffs(ServerPlayer player, BuffEvents.BuffRemovedEvent.RemovalReason reason, boolean silentHealthLoss) {
+        List<BuffInstance> buffs = BuffStorage.get(player);
+        if (buffs.isEmpty()) {
+            return;
+        }
+
+        for (BuffInstance buff : buffs) {
+            BuffData buffData = new BuffData(
+                    buff.id(),
+                    buff.timeTicks(),
+                    buff.totalTicks(),
+                    buff.magnitude(),
+                    buff.healthBonusHearts(),
+                    buff.source(),
+                    buff.created()
+            );
+            NeoForge.EVENT_BUS.post(new BuffEvents.BuffRemovedEvent(player, buffData, reason));
+        }
+
+        BuffStorage.set(player, List.of());
+        double baseHealth = ConfigManager.modConfig().system.maxHearts * 2.0D;
+        AttributeController.applyHealthCap(player, baseHealth, silentHealthLoss);
+        AttributeController.applyBuffAttributes(player, Map.of());
+        NetworkHandler.syncBuffsNow(player, List.of());
     }
 
     @SubscribeEvent

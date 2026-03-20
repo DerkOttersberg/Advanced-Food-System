@@ -8,6 +8,7 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 
+import java.lang.reflect.Field;
 import java.util.Map;
 
 public final class AttributeController {
@@ -21,11 +22,61 @@ public final class AttributeController {
     }
 
     public static void applyHealthCap(Player player, double desiredMaxHealth) {
-        applyAddValue(player, Attributes.MAX_HEALTH, MAX_HEALTH_ID, desiredMaxHealth - 20.0D);
+        applyHealthCap(player, desiredMaxHealth, false);
+    }
 
+    public static void applyHealthCap(Player player, double desiredMaxHealth, boolean silentHealthLoss) {
         if (player.getHealth() > desiredMaxHealth) {
             player.setHealth((float) desiredMaxHealth);
+            if (silentHealthLoss) {
+                clearDamageVisuals(player);
+            }
         }
+
+        applyAddValue(player, Attributes.MAX_HEALTH, MAX_HEALTH_ID, desiredMaxHealth - 20.0D);
+    }
+
+    private static void clearDamageVisuals(Player player) {
+        setIntField(player, "hurtTime", 0);
+        setIntField(player, "hurtDuration", 0);
+        setIntField(player, "invulnerableTime", 0);
+        setBooleanField(player, "hurtMarked", false);
+    }
+
+    private static void setIntField(Player player, String fieldName, int value) {
+        Field field = findField(player.getClass(), fieldName);
+        if (field == null) {
+            return;
+        }
+        try {
+            field.setAccessible(true);
+            field.setInt(player, value);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void setBooleanField(Player player, String fieldName, boolean value) {
+        Field field = findField(player.getClass(), fieldName);
+        if (field == null) {
+            return;
+        }
+        try {
+            field.setAccessible(true);
+            field.setBoolean(player, value);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static Field findField(Class<?> type, String name) {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        return null;
     }
 
     public static void applyBuffAttributes(Player player, Map<String, Double> totals) {

@@ -10,6 +10,7 @@ import com.derko.seamlessapi.api.BuffData;
 import com.derko.seamlessapi.api.BuffEvents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.common.NeoForge;
 
 import java.util.ArrayList;
@@ -26,19 +27,27 @@ public final class BuffTicker {
 
     public static void tick(ServerPlayer player) {
         List<BuffInstance> buffs = new ArrayList<>(BuffStorage.get(player));
+        boolean drinkingMilk = player.isUsingItem() && player.getUseItem().is(Items.MILK_BUCKET);
         if (buffs.isEmpty()) {
-            applyHealthScaling(player, List.of());
+            applyHealthScaling(player, List.of(), false);
             AttributeController.applyBuffAttributes(player, Map.of());
             NetworkHandler.syncBuffs(player, List.of());
             return;
         }
 
         List<BuffInstance> keep = new ArrayList<>();
+        boolean hadExpiredBuff = false;
         for (BuffInstance buff : buffs) {
+            if (drinkingMilk) {
+                keep.add(buff);
+                continue;
+            }
+
             buff.decrement();
             if (buff.timeTicks() > 0) {
                 keep.add(buff);
             } else {
+                hadExpiredBuff = true;
                 // === Fire removal event ===
                 BuffData buffData = new BuffData(
                         buff.id(),
@@ -65,7 +74,7 @@ public final class BuffTicker {
             maybeTriggerCombination(player, keep);
         }
 
-        applyHealthScaling(player, keep);
+        applyHealthScaling(player, keep, hadExpiredBuff);
 
         Map<String, Double> totals = BuffMath.aggregateMagnitudes(keep);
         applyContinuousEffects(player, totals);
@@ -77,7 +86,7 @@ public final class BuffTicker {
         NetworkHandler.syncBuffs(player, keep);
     }
 
-    private static void applyHealthScaling(ServerPlayer player, List<BuffInstance> buffs) {
+    private static void applyHealthScaling(ServerPlayer player, List<BuffInstance> buffs, boolean silentHealthLoss) {
         double baseHearts = ConfigManager.modConfig().system.maxHearts;
         double maxHearts  = ConfigManager.modConfig().system.maxHeartsWithFood;
 
@@ -93,18 +102,13 @@ public final class BuffTicker {
         boolean wholeHeartScaling = ConfigManager.modConfig().system.wholeHeartHealthScaling;
         double appliedSlotBonusHearts = wholeHeartScaling ? Math.floor(slotBonusHearts) : slotBonusHearts;
 
-        boolean comboActive = buffs.stream().anyMatch(b -> b.source().startsWith("combo:") && ComboEffectRegistry.isCapstone(b.id()));
+        boolean comboActive = buffs.stream().anyMatch(b -> b.source().startsWith("combo:") && ComboEffectRegistry.grantsFinalHeart(b.id()));
 
-        double desiredHearts;
-        if (comboActive) {
-            // Combo grants the last heart — sets the player to the full maximum
-            desiredHearts = maxHearts;
-        } else {
-            // Without combo, food slots can add up to (maxHearts - 1); the final heart is combo-only
-            desiredHearts = Math.min(maxHearts - 1.0D, baseHearts + appliedSlotBonusHearts);
-        }
+        // Food slots add their own heart bonus, capstone combo adds exactly +1 extra heart.
+        double desiredHearts = baseHearts + appliedSlotBonusHearts + (comboActive ? 1.0D : 0.0D);
+        desiredHearts = Math.min(maxHearts, desiredHearts);
 
-        AttributeController.applyHealthCap(player, desiredHearts * 2.0D);
+        AttributeController.applyHealthCap(player, desiredHearts * 2.0D, silentHealthLoss);
     }
 
     private static void maybeTriggerCombination(ServerPlayer player, List<BuffInstance> keep) {
